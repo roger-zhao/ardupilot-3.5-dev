@@ -69,11 +69,11 @@ struct SPIDesc {
 #if CONFIG_HAL_BOARD_SUBTYPE == HAL_BOARD_SUBTYPE_LINUX_PXF || CONFIG_HAL_BOARD_SUBTYPE == HAL_BOARD_SUBTYPE_LINUX_ERLEBOARD
 SPIDesc SPIDeviceManager::_device[] = {
     // different SPI tables per board subtype
-    SPIDesc("lsm9ds0_am", 1, 0, SPI_MODE_3, 8, BBB_P9_17,  10*MHZ,10*MHZ),
-    SPIDesc("lsm9ds0_g",  1, 0, SPI_MODE_3, 8, BBB_P8_9,   10*MHZ,10*MHZ),
-    SPIDesc("ms5611",     2, 0, SPI_MODE_3, 8, BBB_P9_42,  10*MHZ,10*MHZ),
-    SPIDesc("mpu6000",    2, 0, SPI_MODE_3, 8, BBB_P9_28,  500*1000, 20*MHZ),
-    SPIDesc("mpu9250",    2, 0, SPI_MODE_3, 8, BBB_P9_23,  1*MHZ, 11*MHZ),
+    // SPIDesc("lsm9ds0_am", 1, 0, SPI_MODE_3, 8, BBB_P9_17,  10*MHZ,10*MHZ),
+    // SPIDesc("lsm9ds0_g",  1, 0, SPI_MODE_3, 8, BBB_P8_9,   10*MHZ,10*MHZ),
+    SPIDesc("ms5803",     2, 0, SPI_MODE_3, 8, BBB_P8_12,  1*MHZ,4*MHZ),
+    SPIDesc("icm20689",   2, 0, SPI_MODE_3, 8, BBB_P8_14,  1*MHZ, 4*MHZ),
+    SPIDesc("hmc5983",    2, 0, SPI_MODE_3, 8, BBB_P8_16,  1*MHZ, 4*MHZ),
 };
 #elif CONFIG_HAL_BOARD_SUBTYPE == HAL_BOARD_SUBTYPE_LINUX_MINLURE
 SPIDesc SPIDeviceManager::_device[] = {
@@ -209,7 +209,6 @@ SPIDevice::SPIDevice(SPIBus &bus, SPIDesc &device_desc)
 {
     set_device_bus(_bus.bus);
     set_device_address(_desc.subdev);
-    _speed = _desc.highspeed;
     
     if (_desc.cs_pin != SPI_CS_KERNEL) {
         _cs = hal.gpio->channel(_desc.cs_pin);

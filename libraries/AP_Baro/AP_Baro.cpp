@@ -375,6 +375,9 @@ void AP_Baro::init(void)
 #elif HAL_BARO_DEFAULT == HAL_BARO_MS5611_SPI
     ADD_BACKEND(AP_Baro_MS56XX::probe(*this,
                                       std::move(hal.spi->get_device(HAL_BARO_MS5611_NAME))));
+#elif HAL_BARO_DEFAULT == HAL_BARO_MS5803_SPI
+    ADD_BACKEND(AP_Baro_MS56XX::probe(*this,
+                                      std::move(hal.spi->get_device(HAL_BARO_MS5803_NAME))));
 #elif HAL_BARO_DEFAULT == HAL_BARO_MS5607_I2C
     ADD_BACKEND(AP_Baro_MS56XX::probe(*this,
                                       std::move(hal.i2c_mgr->get_device(HAL_BARO_MS5607_I2C_BUS, HAL_BARO_MS5607_I2C_ADDR)),

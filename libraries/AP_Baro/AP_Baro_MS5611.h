@@ -18,10 +18,11 @@ public:
     enum MS56XX_TYPE {
         BARO_MS5611 = 0,
         BARO_MS5607 = 1,
-        BARO_MS5637 = 2
+        BARO_MS5637 = 2,
+        BARO_MS5803 = 3
     };
 
-    static AP_Baro_Backend *probe(AP_Baro &baro, AP_HAL::OwnPtr<AP_HAL::Device> dev, enum MS56XX_TYPE ms56xx_type = BARO_MS5611);
+    static AP_Baro_Backend *probe(AP_Baro &baro, AP_HAL::OwnPtr<AP_HAL::Device> dev, enum MS56XX_TYPE ms56xx_type = BARO_MS5803);
     
 private:
     /*
@@ -40,8 +41,10 @@ private:
     void _calculate_5611();
     void _calculate_5607();
     void _calculate_5637();
+    void _calculate_5803();
     bool _read_prom_5611(uint16_t prom[8]);
     bool _read_prom_5637(uint16_t prom[8]);
+    bool _read_prom_5803(uint16_t prom[8]);
 
     uint16_t _read_prom_word(uint8_t word);
     uint32_t _read_adc();

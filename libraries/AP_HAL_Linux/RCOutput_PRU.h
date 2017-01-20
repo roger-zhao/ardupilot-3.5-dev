@@ -13,6 +13,10 @@
 #define PWM_CMD_CLR	         5	/* clr a pwm output explicitly */
 #define PWM_CMD_TEST	         6	/* various crap */
 
+// add By ZhaoYJ for keep alive with PRU
+#define PWM_CMD_KEEP_ALIVE 0xbeef
+#define PWM_REPLY_KEEP_ALIVE 0x2152 // ~0xdead
+
 namespace Linux {
 
 class RCOutput_PRU : public AP_HAL::RCOutput {
@@ -26,6 +30,8 @@ class RCOutput_PRU : public AP_HAL::RCOutput {
     void     read(uint16_t* period_us, uint8_t len);
     void     cork(void) override;
     void     push(void) override;
+    void     set_magic_sync(void);
+    void     rcout_keep_alive(void);
 
 private:
     static const int TICK_PER_US=200;
@@ -33,10 +39,10 @@ private:
     struct pwm_cmd {
         uint32_t magic;
         uint32_t enmask;     /* enable mask */
-        uint32_t offmsk;     /* state when pwm is off */
         uint32_t periodhi[MAX_PWMS][2];
         uint32_t hilo_read[MAX_PWMS][2];
-        uint32_t enmask_read;
+        uint16_t keep_alive; // flag, add By ZhaoYJ 
+        uint16_t time_out; // second, add By ZhaoYJ 
     };
     volatile struct pwm_cmd *sharedMem_cmd;
 

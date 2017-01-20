@@ -130,6 +130,7 @@ $(SKETCHELF): $(SKETCHOBJS) $(LIBOBJS)
 	$(RULEHDR)
 	$(v)$(LD) $(LDFLAGS) -o $@ $(SKETCHOBJS) $(LIBOBJS) $(LIBS)
 	$(v)cp $(SKETCHELF) .
+	arm-linux-gnueabihf-strip $(SKETCHELF)
 	@echo "Firmware is in $(BUILDELF)"
 endif
 

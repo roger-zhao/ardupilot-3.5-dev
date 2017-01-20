@@ -292,6 +292,9 @@ void Scheduler::_timer_task()
 {
     int i;
 
+    // AB ZhaoYJ for keep alive with PRU-pwm
+    hal.rcout->rcout_keep_alive();
+
     if (_in_timer_proc) {
         return;
     }

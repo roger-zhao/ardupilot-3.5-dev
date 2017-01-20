@@ -122,4 +122,11 @@ public:
         MODE_PWM_BRUSHED16KHZ
     };
     virtual void    set_output_mode(enum output_mode mode) {}
+
+        /*
+         *        setup magic number to ensure all PWM sync of each channel
+         *               added by Yangmi 2016-4-6 
+         *                   */
+        virtual void     set_magic_sync(void) {}
+            virtual void     rcout_keep_alive(void) {}
 };

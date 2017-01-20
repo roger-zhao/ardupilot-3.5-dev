@@ -81,6 +81,7 @@ static void failsafe_check_static()
 
 void Copter::init_ardupilot()
 {
+    hal.util->prt("[OK]: init autopilot start");
     if (!hal.gpio->usb_connected()) {
         // USB is not connected, this means UART0 may be a Xbee, with
         // its darned bricking problem. We can't write to it for at
@@ -309,6 +310,7 @@ void Copter::init_ardupilot()
 
     cliSerial->print("\nReady to FLY ");
 
+    hal.util->prt("[OK]: init autopilot done");
     // flag that initialisation has completed
     ap.initialised = true;
 }

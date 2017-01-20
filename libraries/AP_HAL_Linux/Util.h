@@ -33,6 +33,9 @@ public:
     void init(int argc, char * const *argv);
     bool run_debug_shell(AP_HAL::BetterStream *stream) { return false; }
 
+    void prt(const char *fmt, ... ); 
+
+
     /**
        return commandline arguments, if available
      */

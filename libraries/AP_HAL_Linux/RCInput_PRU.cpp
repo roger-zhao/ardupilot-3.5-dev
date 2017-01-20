@@ -31,15 +31,14 @@ void RCInput_PRU::init()
     if (mem_fd == -1) {
         AP_HAL::panic("Unable to open /dev/mem");
     }
-    ring_buffer = (volatile struct ring_buffer*) mmap(0, 0x1000, PROT_READ|PROT_WRITE, 
-                                                      MAP_SHARED, mem_fd, RCIN_PRUSS_SHAREDRAM_BASE);
+    ring_buffer = (volatile struct ring_buffer*) mmap(0, sizeof(ring_buffer) + 0x100, PROT_READ|PROT_WRITE, MAP_SHARED, mem_fd, RCIN_PRUSS_SHAREDRAM_BASE);
     close(mem_fd);
     ring_buffer->ring_head = 0;
     _s0_time = 0;
 
     // enable the spektrum RC input power
-    hal.gpio->pinMode(BBB_P8_17, HAL_GPIO_OUTPUT);
-    hal.gpio->write(BBB_P8_17, 1);
+    // hal.gpio->pinMode(BBB_P8_17, HAL_GPIO_OUTPUT);
+    // hal.gpio->write(BBB_P8_17, 1);
 }
 
 /*

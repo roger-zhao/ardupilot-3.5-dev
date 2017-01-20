@@ -41,6 +41,13 @@ static const uint8_t CMD_MS56XX_PROM = 0xA0;
 #define ADDR_CMD_CONVERT_D2_OSR2048 0x56
 #define ADDR_CMD_CONVERT_D2_OSR4096 0x58
 
+#define MS5803_TEMP_SCALE                                       (float)(100.0)
+#define VALUE_OF_20C                                            ((float)(20.0) * MS5803_TEMP_SCALE)
+#define VALUE_OF_UNDER_15C                                      ((float)(-15.0) * MS5803_TEMP_SCALE)
+#define VALUE_OF_45C                                            ((float)(45.0) * MS5803_TEMP_SCALE)
+#define MS5803_MIN_TEMP                                         ((float)(-40.0) * MS5803_TEMP_SCALE)
+#define MS5803_MAX_TEMP                                         ((float)(85.0) * MS5803_TEMP_SCALE)
+
 /*
   use an OSR of 1024 to reduce the self-heating effect of the
   sensor. Information from MS tells us that some individual sensors
@@ -94,11 +101,12 @@ bool AP_Baro_MS56XX::_init()
     _dev->transfer(&CMD_MS56XX_RESET, 1, nullptr, 0);
     hal.scheduler->delay(4);
     
-    const char *name = "MS5611";
+    const char *name = "MS5803";
     switch (_ms56xx_type) {
     case BARO_MS5607:
         name = "MS5607";
     case BARO_MS5611:
+    case BARO_MS5803:
         prom_read_ok = _read_prom_5611(prom);
         break;
     case BARO_MS5637:
@@ -112,7 +120,7 @@ bool AP_Baro_MS56XX::_init()
         return false;
     }
 
-    printf("%s found on bus %u address 0x%02x\n", name, _dev->bus_num(), _dev->get_bus_address());
+    hal.util->prt("[OK]: %s detectd", name);
 
     // Save factory calibration coefficients
     _cal_reg.c1 = prom[1];
@@ -355,6 +363,9 @@ void AP_Baro_MS56XX::update()
     case BARO_MS5611:
         _calculate_5611();
         break;
+    case BARO_MS5803:
+        _calculate_5803();
+        break;
     case BARO_MS5637:
         _calculate_5637();
         break;
@@ -462,4 +473,55 @@ void AP_Baro_MS56XX::_calculate_5637()
     int32_t pressure = ((int64_t)raw_pressure * SENS / (int64_t)2097152 - OFF) / (int64_t)32768;
     float temperature = TEMP * 0.01f;
     _copy_to_frontend(_instance, (float)pressure, temperature);
+}
+
+// Calculate Temperature and compensated Pressure in real units (Celsius degrees*100, mbar*100).
+void AP_Baro_MS56XX::_calculate_5803()
+{
+    float dT;
+    float TEMP;
+    float OFF;
+    float SENS;
+
+	float T2 = 0;
+	float Aux = 0;
+	float OFF2 = 0;
+	float SENS2 = 0;
+
+    // Formulas from manufacturer datasheet
+    // sub -15c temperature compensation is not included
+
+    // we do the calculations using floating point allows us to take advantage
+    // of the averaging of D1 and D1 over multiple samples, giving us more
+    // precision
+    dT = _D2-(((uint32_t)_cal_reg.c5)<<8);
+    TEMP = (dT * _cal_reg.c6)/8388608;
+    OFF = _cal_reg.c2 * 65536.0f + (_cal_reg.c4 * dT) / 128;
+    SENS = _cal_reg.c1 * 32768.0f + (_cal_reg.c3 * dT) / 256;
+
+	if (TEMP < VALUE_OF_20C) {
+		// second order temperature compensation when under 20 degrees C
+		T2 = (dT * dT)/ 0x80000000;
+		Aux = (TEMP - 2000.0f) * (TEMP - 2000.0f);
+		OFF2 = 3.0f * Aux;
+		SENS2 = (7.0f * Aux) * 0.125f; // / 8;
+		if (TEMP < VALUE_OF_UNDER_15C) {
+			SENS2 = SENS2 + 2.0f * ((TEMP + 1500.0f) * (TEMP + 1500.0f));
+		}
+
+	} else {
+		T2 = 0;
+		OFF2 = 0;
+		SENS2 = 0;
+		if (TEMP > VALUE_OF_45C)
+			SENS2 = SENS2 - (((TEMP - 4500.0f) * (TEMP - 4500.0f)) * 0.125f);
+	}
+	TEMP = TEMP - T2;
+	OFF = OFF - OFF2;
+	SENS = SENS - SENS2;
+
+
+    float pressure = (_D1*SENS/2097152 - OFF)/32768;
+    float temperature = TEMP * 0.01f;
+    _copy_to_frontend(_instance, pressure, temperature);
 }

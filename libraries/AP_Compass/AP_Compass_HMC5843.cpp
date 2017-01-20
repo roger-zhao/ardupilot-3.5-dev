@@ -385,6 +385,8 @@ bool AP_Compass_HMC5843::_check_whoami()
         return false;
     }
 
+    hal.util->prt("[OK]: HMC5983 detected");
+
     return true;
 }
 

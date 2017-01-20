@@ -30,7 +30,7 @@ extern const AP_HAL::HAL& hal;
 #if CONFIG_HAL_BOARD == HAL_BOARD_LINUX
 #include <AP_HAL_Linux/GPIO.h>
 #if CONFIG_HAL_BOARD_SUBTYPE == HAL_BOARD_SUBTYPE_LINUX_ERLEBOARD || CONFIG_HAL_BOARD_SUBTYPE == HAL_BOARD_SUBTYPE_LINUX_PXF
-#define INVENSENSE_DRDY_PIN BBB_P8_14
+// #define INVENSENSE_DRDY_PIN BBB_P8_14
 #elif CONFIG_HAL_BOARD_SUBTYPE == HAL_BOARD_SUBTYPE_LINUX_RASPILOT
 #define INVENSENSE_DRDY_PIN RPI_GPIO_24
 #elif CONFIG_HAL_BOARD_SUBTYPE == HAL_BOARD_SUBTYPE_LINUX_MINLURE
@@ -220,6 +220,7 @@ extern const AP_HAL::HAL& hal;
 #define MPU_WHOAMI_20608		0xaf
 #define MPU_WHOAMI_MPU9250      0x71
 #define MPU_WHOAMI_MPU9255      0x73
+#define MPU_WHOAMI_ICM20689     0x98
 
 #define BIT_READ_FLAG                           0x80
 #define BIT_I2C_SLVX_EN                         0x80
@@ -330,6 +331,9 @@ AP_InertialSensor_Backend *AP_InertialSensor_Invensense::probe(AP_InertialSensor
     }
     if (sensor->_mpu_type == Invensense_MPU9250) {
         sensor->_id = HAL_INS_MPU9250_SPI;
+    }
+    else if (sensor->_mpu_type == Invensense_ICM20689) {
+        sensor->_id = 689;
     } else {
         sensor->_id = HAL_INS_MPU60XX_SPI;
     }
@@ -395,6 +399,7 @@ void AP_InertialSensor_Invensense::start()
         break;
     case Invensense_MPU6000:
     case Invensense_ICM20608:
+    case Invensense_ICM20689:
     default:
         gdev = DEVTYPE_GYR_MPU6000;
         adev = DEVTYPE_ACC_MPU6000;
@@ -434,7 +439,8 @@ void AP_InertialSensor_Invensense::start()
     }
     hal.scheduler->delay(1);
 
-	if (_mpu_type == Invensense_ICM20608) {
+	if ((_mpu_type == Invensense_ICM20608) 
+	 || (_mpu_type == Invensense_ICM20689)) {
         // this avoids a sensor bug, see description above
 		_register_write(MPUREG_ICM_UNDOC1, MPUREG_ICM_UNDOC1_VALUE, true);
 	}
@@ -542,7 +548,7 @@ bool AP_InertialSensor_Invensense::_accumulate(uint8_t *samples, uint8_t n_sampl
 
         int16_t t2 = int16_val(data, 3);
         if (!_check_raw_temp(t2)) {
-            debug("temp reset %d %d", _raw_temp, t2);
+            // debug("temp reset %d %d", _raw_temp, t2);
             _fifo_reset();
             return false;
         }
@@ -585,7 +591,7 @@ bool AP_InertialSensor_Invensense::_accumulate_fast_sampling(uint8_t *samples, u
         // use temperatue to detect FIFO corruption
         int16_t t2 = int16_val(data, 3);
         if (!_check_raw_temp(t2)) {
-            debug("temp reset %d %d", _raw_temp, t2);
+            // debug("temp reset %d %d", _raw_temp, t2);
             _fifo_reset();
             ret = false;
             break;
@@ -816,6 +822,9 @@ bool AP_InertialSensor_Invensense::_check_whoami(void)
         return true;
     case MPU_WHOAMI_20608:
         _mpu_type = Invensense_ICM20608;
+    case MPU_WHOAMI_ICM20689:
+        _mpu_type = Invensense_ICM20689;
+        hal.util->prt("[OK]: Inversense ICM20689 detected");
         return true;
     }
     // not a value WHOAMI result
@@ -897,7 +906,8 @@ bool AP_InertialSensor_Invensense::_hardware_init(void)
         return false;
     }
 
-	if (_mpu_type == Invensense_ICM20608) {
+	if ((_mpu_type == Invensense_ICM20608) 
+	 || (_mpu_type == Invensense_ICM20689)) {
         // this avoids a sensor bug, see description above
 		_register_write(MPUREG_ICM_UNDOC1, MPUREG_ICM_UNDOC1_VALUE, true);
 	}
