@@ -19,7 +19,7 @@
 #define AP_MOTORS_MAX_NUM_MOTORS 8
 
 // motor update rate
-#define AP_MOTORS_SPEED_DEFAULT     490 // default output rate to the motors
+#define AP_MOTORS_SPEED_DEFAULT     400 // default output rate to the motors
 
 /// @class      AP_Motors
 class AP_Motors {
