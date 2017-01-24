@@ -4,14 +4,14 @@
 #include "Display_Backend.h"
 #include <AP_HAL/I2CDevice.h>
 
-#define SSD1306_COLUMNS 128		// display columns
-#define SSD1306_ROWS 64		    // display rows
-#define SSD1306_ROWS_PER_PAGE 8
+#define SH1106_COLUMNS 132		// display columns
+#define SH1106_ROWS 64		    // display rows
+#define SH1106_ROWS_PER_PAGE 8
 
-class Display_SSD1306_I2C: public Display_Backend {
+class Display_SH1106_I2C: public Display_Backend {
 
 public:
-    Display_SSD1306_I2C(AP_HAL::OwnPtr<AP_HAL::Device> dev);
+    Display_SH1106_I2C(AP_HAL::OwnPtr<AP_HAL::Device> dev);
 
     bool hw_init() override;
     void hw_update() override;
@@ -23,7 +23,7 @@ private:
     void _timer();
 
     AP_HAL::OwnPtr<AP_HAL::Device> _dev;
-    uint8_t _displaybuffer[SSD1306_COLUMNS * SSD1306_ROWS_PER_PAGE];
+    uint8_t _displaybuffer[SH1106_COLUMNS * SH1106_ROWS_PER_PAGE];
     AP_HAL::Semaphore *_displaybuffer_sem;
     bool _need_hw_update;
 };
