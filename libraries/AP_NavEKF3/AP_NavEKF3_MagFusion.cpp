@@ -8,8 +8,6 @@
 #include <AP_Vehicle/AP_Vehicle.h>
 #include <GCS_MAVLink/GCS.h>
 
-#include <stdio.h>
-
 extern const AP_HAL::HAL& hal;
 
 /********************************************************
@@ -110,7 +108,7 @@ void NavEKF3_core::controlMagYawReset()
             stateStruct.quat = newQuat;
 
             // update the yaw angle variance using the variance of the measurement
-            angleErrVarVec.z = sq(fmaxf(frontend->_yawNoise, 1.0e-2f));
+            angleErrVarVec.z = sq(MAX(frontend->_yawNoise, 1.0e-2f));
 
             // reset the quaternion covariances using the rotation vector variances
             initialiseQuatCovariances(angleErrVarVec);
@@ -178,8 +176,10 @@ void NavEKF3_core::realignYawGPS()
             // calculate new filter quaternion states from Euler angles
             stateStruct.quat.from_euler(eulerAngles.x, eulerAngles.y, gpsYaw);
 
-            // reset the velocity and posiiton states as they will be inaccurate due to bad yaw
+            // reset the velocity and position states as they will be inaccurate due to bad yaw
+            velResetSource = GPS;
             ResetVelocity();
+            posResetSource = GPS;
             ResetPosition();
 
             // set the yaw angle variance to a larger value to reflect the uncertainty in yaw
@@ -260,24 +260,26 @@ void NavEKF3_core::SelectMagFusion()
                 FuseDeclination(0.34f);
             }
             // fuse the three magnetometer componenents sequentially
+            hal.util->perf_begin(_perf_test[0]);
             for (mag_state.obsIndex = 0; mag_state.obsIndex <= 2; mag_state.obsIndex++) {
-                hal.util->perf_begin(_perf_test[0]);
                 FuseMagnetometer();
-                hal.util->perf_end(_perf_test[0]);
                 // don't continue fusion if unhealthy
                 if (!magHealth) {
+                    hal.util->perf_end(_perf_test[0]);
                     break;
                 }
             }
+            hal.util->perf_end(_perf_test[0]);
             // zero the test ratio output from the inactive simple magnetometer yaw fusion
             yawTestRatio = 0.0f;
         }
     }
 
-    // If we have no magnetometer and are on the ground, fuse in a synthetic heading measurement to prevent the
-    // filter covariances from becoming badly conditioned
+    // If we have no magnetometer, fuse in a synthetic heading measurement at 7Hz to prevent the filter covariances
+    // from becoming badly conditioned. For planes we only do this on-ground because they can align the yaw from GPS when
+    // airborne. For other platform types we do this all the time.
     if (!use_compass()) {
-        if (onGround && (imuSampleTime_ms - lastSynthYawTime_ms > 1000)) {
+        if ((onGround || !assume_zero_sideslip()) && (imuSampleTime_ms - lastSynthYawTime_ms > 140)) {
             fuseEulerYaw();
             magTestRatio.zero();
             yawTestRatio = 0.0f;
@@ -807,7 +809,7 @@ void NavEKF3_core::fuseEulerYaw()
     // If we can't use compass data, set the  meaurement to the predicted
     // to prevent uncontrolled variance growth whilst on ground without magnetometer
     float measured_yaw;
-    if (use_compass() && yawAlignComplete && magStateInitComplete) {
+    if (use_compass() && yawAlignComplete) {
         measured_yaw = wrap_PI(-atan2f(magMeasNED.y, magMeasNED.x) + _ahrs->get_compass()->get_declination());
     } else {
         measured_yaw = predicted_yaw;

@@ -348,7 +348,11 @@ bool GCS_MAVLINK_Copter::try_send_message(enum ap_message id)
     // if we don't have at least 250 micros remaining before the main loop
     // wants to fire then don't send a mavlink message. We want to
     // prioritise the main flight control loop over communications
-    if (copter.scheduler.time_available_usec() < 250 && copter.motors->armed()) {
+
+    // the check for nullptr here doesn't just save a nullptr
+    // dereference; it means that we send messages out even if we're
+    // failing to detect a PX4 board type (see delay(3000) in px_drivers).
+    if (copter.motors != nullptr && copter.scheduler.time_available_usec() < 250 && copter.motors->armed()) {
         copter.gcs_out_of_time = true;
         return false;
     }
@@ -410,7 +414,7 @@ bool GCS_MAVLINK_Copter::try_send_message(enum ap_message id)
         send_radio_in(copter.receiver_rssi);
         break;
 
-    case MSG_RADIO_OUT:
+    case MSG_SERVO_OUTPUT_RAW:
         CHECK_PAYLOAD_SIZE(SERVO_OUTPUT_RAW);
         send_servo_output_raw(false);
         break;
@@ -740,7 +744,7 @@ GCS_MAVLINK_Copter::data_stream_send(void)
     if (copter.gcs_out_of_time) return;
 
     if (stream_trigger(STREAM_RC_CHANNELS)) {
-        send_message(MSG_RADIO_OUT);
+        send_message(MSG_SERVO_OUTPUT_RAW);
         send_message(MSG_RADIO_IN);
     }
 

@@ -112,11 +112,9 @@ public:
     bool resetHeightDatum(void);
 
     // Commands the EKF to not use GPS.
-    // This command must be sent prior to arming as it will only be actioned when the filter is in static mode
-    // This command is forgotten by the EKF each time it goes back into static mode (eg the vehicle disarms)
+    // This command must be sent prior to vehicle arming and EKF commencement of GPS usage
     // Returns 0 if command rejected
-    // Returns 1 if attitude, vertical velocity and vertical position will be provided
-    // Returns 2 if attitude, 3D-velocity, vertical position and relative horizontal position will be provided
+    // Returns 1 if command accepted
     uint8_t setInhibitGPS(void);
 
     // return the horizontal speed limit in m/s set by optical flow sensor limits
@@ -203,17 +201,21 @@ public:
     void getFlowDebug(int8_t instance, float &varFlow, float &gndOffset, float &flowInnovX, float &flowInnovY, float &auxInnov, float &HAGL, float &rngInnov, float &range, float &gndOffsetErr);
 
     /*
-        Returns the following data for debugging range beacon fusion from the specified instance
-        An out of range instance (eg -1) returns data for the the primary instance
+        Returns the following data for debugging range beacon fusion
         ID : beacon identifier
         rng : measured range to beacon (m)
         innov : range innovation (m)
         innovVar : innovation variance (m^2)
         testRatio : innovation consistency test ratio
         beaconPosNED : beacon NED position (m)
+        offsetHigh : high hypothesis for range beacons system vertical offset (m)
+        offsetLow : low hypothesis for range beacons system vertical offset (m)
+        posNED : North,East,Down position estimate of receiver from 3-state filter
+
         returns true if data could be found, false if it could not
     */
-    bool getRangeBeaconDebug(int8_t instance, uint8_t &ID, float &rng, float &innov, float &innovVar, float &testRatio, Vector3f &beaconPosNED, float &offsetHigh, float &offsetLow);
+    bool getRangeBeaconDebug(int8_t instance, uint8_t &ID, float &rng, float &innov, float &innovVar, float &testRatio, Vector3f &beaconPosNED,
+                             float &offsetHigh, float &offsetLow, Vector3f &posNED);
 
     // called by vehicle code to specify that a takeoff is happening
     // causes the EKF to compensate for expected barometer errors due to ground effect
@@ -325,7 +327,6 @@ private:
     AP_Float _accNoise;             // accelerometer process noise : m/s^2
     AP_Float _gyroBiasProcessNoise; // gyro bias state process noise : rad/s
     AP_Float _accelBiasProcessNoise;// accel bias state process noise : m/s^2
-    AP_Int16 _gpsDelay_ms;          // effective average delay of GPS measurements relative to inertial measurement (msec)
     AP_Int16 _hgtDelay_ms;          // effective average delay of Height measurements relative to inertial measurements (msec)
     AP_Int8  _fusionModeGPS;        // 0 = use 3D velocity, 1 = use 2D velocity, 2 = use no velocity
     AP_Int16  _gpsVelInnovGate;     // Percentage number of standard deviations applied to GPS velocity innovation consistency check
@@ -384,7 +385,8 @@ private:
     const uint16_t gndEffectTimeout_ms; // time in msec that ground effect mode is active after being activated
     const float gndEffectBaroScaler;    // scaler applied to the barometer observation variance when ground effect mode is active
     const uint8_t gndGradientSigma;     // RMS terrain gradient percentage assumed by the terrain height estimation
-    const uint8_t fusionTimeStep_ms;    // The minimum time interval between covariance predictions and measurement fusions in msec
+    const uint16_t fusionTimeStep_ms;   // The minimum time interval between covariance predictions and measurement fusions in msec
+    const uint8_t sensorIntervalMin_ms; // The minimum allowed time between measurements from any non-IMU sensor (msec)
 
     struct {
         bool enabled:1;
@@ -419,6 +421,9 @@ private:
     } pos_down_reset_data;
 
     bool runCoreSelection; // true when the primary core has stabilised and the core selection logic can be started
+
+    bool coreSetupRequired[7]; // true when this core index needs to be setup
+    uint8_t coreImuIndex[7];   // IMU index used by this core
 
     // update the yaw reset data to capture changes due to a lane switch
     // new_primary - index of the ekf instance that we are about to switch to as the primary

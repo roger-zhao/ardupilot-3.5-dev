@@ -21,12 +21,11 @@
 
 #pragma GCC optimize("O3")
 
-#define EK2_DISABLE_INTERRUPTS 0
+#define EK3_DISABLE_INTERRUPTS 0
 
 
 #include <AP_Math/AP_Math.h>
 #include "AP_NavEKF3.h"
-#include <stdio.h>
 #include <AP_Math/vectorN.h>
 #include <AP_NavEKF3/AP_NavEKF3_Buffer.h>
 
@@ -125,11 +124,9 @@ public:
     bool resetHeightDatum(void);
 
     // Commands the EKF to not use GPS.
-    // This command must be sent prior to arming as it will only be actioned when the filter is in static mode
-    // This command is forgotten by the EKF each time it goes back into static mode (eg the vehicle disarms)
+    // This command must be sent prior to vehicle arming and EKF commencement of GPS usage
     // Returns 0 if command rejected
-    // Returns 1 if attitude, vertical velocity and vertical position will be provided
-    // Returns 2 if attitude, 3D-velocity, vertical position and relative horizontal position will be provided
+    // Returns 1 if command accepted
     uint8_t setInhibitGPS(void);
 
     // return the horizontal speed limit in m/s set by optical flow sensor limits
@@ -212,8 +209,14 @@ public:
         innovVar : innovation variance (m^2)
         testRatio : innovation consistency test ratio
         beaconPosNED : beacon NED position (m)
+        offsetHigh : high hypothesis for range beacons system vertical offset (m)
+        offsetLow : low hypothesis for range beacons system vertical offset (m)
+        posNED : North,East,Down position estimate of receiver from 3-state filter
+
+        returns true if data could be found, false if it could not
     */
-    bool getRangeBeaconDebug(uint8_t &ID, float &rng, float &innov, float &innovVar, float &testRatio, Vector3f &beaconPosNED, float &offsetHigh, float &offsetLow);
+    bool getRangeBeaconDebug(uint8_t &ID, float &rng, float &innov, float &innovVar, float &testRatio, Vector3f &beaconPosNED,
+                             float &offsetHigh, float &offsetLow, Vector3f &posNED);
 
     // called by vehicle code to specify that a takeoff is happening
     // causes the EKF to compensate for expected barometer errors due to ground effect
@@ -311,6 +314,7 @@ private:
     uint8_t imu_index;
     uint8_t core_index;
     uint8_t imu_buffer_length;
+    uint8_t obs_buffer_length;
 
     typedef float ftype;
 #if MATH_CHECK_INDEXES
@@ -470,7 +474,7 @@ private:
     // use range beaon measurements to calculate a static position
     void FuseRngBcnStatic();
 
-    // calculate the offset from EKF vetical position datum to the range beacon system datum
+    // calculate the offset from EKF vertical position datum to the range beacon system datum
     void CalcRangeBeaconPosDownOffset(float obsVar, Vector3f &vehiclePosNED, bool aligning);
 
     // fuse magnetometer measurements
@@ -616,8 +620,8 @@ private:
     // Calculate weighting that is applied to IMU1 accel data to blend data from IMU's 1 and 2
     void calcIMU_Weighting(float K1, float K2);
 
-    // return true if optical flow data is available
-    bool optFlowDataPresent(void) const;
+    // return true if the filter is ready to start using optical flow measurements
+    bool readyToUseOptFlow(void) const;
 
     // return true if we should use the range finder sensor
     bool useRngFinder(void) const;
@@ -663,8 +667,8 @@ private:
     // Assess GPS data quality and return true if good enough to align the EKF
     bool calcGpsGoodToAlign(void);
 
-    // return true and set the class variable true if the delta angle bias has been learned
-    bool checkGyroCalStatus(void);
+    // set the class variable true if the delta angle bias variances are sufficiently small
+    void checkGyroCalStatus(void);
 
     // update inflight calculaton that determines if GPS data is good enough for reliable navigation
     void calcGpsGoodForFlight(void);
@@ -716,10 +720,6 @@ private:
     
     // initialise the quaternion covariances using rotation vector variances
     void initialiseQuatCovariances(Vector3f &rotVarVec);
-
-    // Length of FIFO buffers used for non-IMU sensor data.
-    // Must be larger than the time period defined by IMU_BUFFER_LENGTH
-    static const uint32_t OBS_BUFFER_LENGTH = 5;
 
     // Variables
     bool statesInitialised;         // boolean true when filter states have been initialised
@@ -895,6 +895,22 @@ private:
     Vector3f outputTrackError;      // attitude (rad), velocity (m/s) and position (m) tracking error magnitudes from the output observer
     Vector3f velOffsetNED;          // This adds to the earth frame velocity estimate at the IMU to give the velocity at the body origin (m/s)
     Vector3f posOffsetNED;          // This adds to the earth frame position estimate at the IMU to give the position at the body origin (m)
+    uint32_t firstInitTime_ms;      // First time the initialise function was called (msec)
+    uint32_t lastInitFailReport_ms; // Last time the buffer initialisation failure report wass sent (msec)
+
+    // Specify source of data to be used for a partial state reset
+    // Checking the availability and quality of the data source specified is the responsibility of the caller
+    enum resetDataSource {
+                    DEFAULT=0,      // Use data source selected by reset function internal rules
+                    GPS=1,          // Use GPS
+                    RNGBCN=2,       // Use beacon range data
+                    FLOW=3,         // Use optical flow rates
+                    BARO=4,         // Use Baro height
+                    MAG=5,          // Use magnetometer data
+                    RNGFND=6        // Use rangefinder data
+                        };
+    resetDataSource posResetSource; // preferred soure of data for position reset
+    resetDataSource velResetSource; // preferred source of data for a velocity reset
 
     // variables used to calculate a vertical velocity that is kinematically consistent with the verical position
     float posDownDerivative;        // Rate of chage of vertical position (dPosD/dt) in m/s. This is the first time derivative of PosD.
@@ -1011,7 +1027,6 @@ private:
     uint8_t N_beacons;                  // Number of range beacons in use
     float maxBcnPosD;                   // maximum position of all beacons in the down direction (m)
     float minBcnPosD;                   // minimum position of all beacons in the down direction (m)
-    float bcnPosOffset;                 // Vertical position offset of the beacon constellation origin relative to the EKF origin (m)
     bool usingMinHypothesis;            // true when the min beacob constellatio offset hyopthesis is being used
 
     float bcnPosDownOffsetMax;          // Vertical position offset of the beacon constellation origin relative to the EKF origin (m)
@@ -1021,6 +1036,9 @@ private:
     float bcnPosDownOffsetMin;          // Vertical position offset of the beacon constellation origin relative to the EKF origin (m)
     float bcnPosOffsetMinVar;           // Variance of the bcnPosDownOffsetMin state (m)
     float OffsetMinInnovFilt;           // Filtered magnitude of the range innovations using bcnPosOffsetLow
+
+    Vector3f bcnPosOffsetNED;           // NED position of the beacon origin in earth frame (m)
+    bool bcnOriginEstInit;              // True when the beacon origin has been initialised
 
     // Range Beacon Fusion Debug Reporting
     uint8_t rngBcnFuseDataReportIndex;// index of range beacon fusion data last reported

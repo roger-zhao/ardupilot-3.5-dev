@@ -26,7 +26,7 @@ const AP_Param::GroupInfo QuadPlane::var_info[] = {
     // @Param: TRANSITION_MS
     // @DisplayName: Transition time
     // @Description: Transition time in milliseconds after minimum airspeed is reached
-    // @Units: milli-seconds
+    // @Units: milliseconds
     // @Range: 0 30000
     // @User: Advanced
     AP_GROUPINFO("TRANSITION_MS", 11, QuadPlane, transition_time_ms, 5000),
@@ -328,6 +328,12 @@ const AP_Param::GroupInfo QuadPlane::var_info[] = {
     // @User: Standard
     AP_GROUPINFO("ASSIST_ANGLE", 45, QuadPlane, assist_angle, 30),
 
+    // @Param: TILT_TYPE
+    // @DisplayName: Tiltrotor type
+    // @Description: This is the type of tiltrotor when TILT_MASK is non-zero. A continuous tiltrotor can tilt the rotors to any angle on demand. A binary tiltrotor assumes a retract style servo where the servo is either fully forward or fully up. In both cases the servo can't move faster than Q_TILT_RATE
+    // @Values: 0:Continuous,1:Binary
+    AP_GROUPINFO("TILT_TYPE", 47, QuadPlane, tilt.tilt_type, TILT_TYPE_CONTINUOUS),
+    
     AP_GROUPEND
 };
 
@@ -481,7 +487,6 @@ bool QuadPlane::setup(void)
     for (uint8_t i=0; i<8; i++) {
         SRV_Channel::Aux_servo_function_t func = (SRV_Channel::Aux_servo_function_t)(SRV_Channel::k_motor1+i);
         SRV_Channels::set_failsafe_pwm(func, thr_min_pwm);
-        SRV_Channels::set_trim_to_pwm_for(func, thr_min_pwm);
     }
 
 #if HAVE_PX4_MIXER
@@ -1005,6 +1010,11 @@ void QuadPlane::update_transition(void)
         assisted_flight = false;
     }
 
+    // if rotors are fully forward then we are not transitioning
+    if (tiltrotor_fully_fwd()) {
+        transition_state = TRANSITION_DONE;
+    }
+    
     if (transition_state < TRANSITION_TIMER) {
         // set a single loop pitch limit in TECS
         if (plane.ahrs.groundspeed() < 3) {
@@ -1055,8 +1065,10 @@ void QuadPlane::update_transition(void)
         }
         float trans_time_ms = (float)transition_time_ms.get();
         float throttle_scaled = last_throttle * (trans_time_ms - (millis() - transition_start_ms)) / trans_time_ms;
-        if (throttle_scaled < 0) {
-            throttle_scaled = 0;
+        if (throttle_scaled < 0.01) {
+            // ensure we don't drop all the way to zero or the motors
+            // will stop stabilizing
+            throttle_scaled = 0.01;
         }
         assisted_flight = true;
         hold_stabilize(throttle_scaled);

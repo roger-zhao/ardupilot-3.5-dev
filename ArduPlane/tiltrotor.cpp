@@ -22,15 +22,10 @@ void QuadPlane::tiltrotor_slew(float newtilt)
 }
 
 /*
-  update motor tilt
+  update motor tilt for continuous tilt servos
  */
-void QuadPlane::tiltrotor_update(void)
+void QuadPlane::tiltrotor_continuous_update(void)
 {
-    if (tilt.tilt_mask <= 0) {
-        // no motors to tilt
-        return;
-    }
-
     // default to inactive
     tilt.motors_active = false;
 
@@ -53,7 +48,9 @@ void QuadPlane::tiltrotor_update(void)
         if (!hal.util->get_soft_armed()) {
             tilt.current_throttle = 0;
         } else {
-            motors->output_motor_mask(tilt.current_throttle, (uint8_t)tilt.tilt_mask.get());
+            // the motors are all the way forward, start using them for fwd thrust
+            uint8_t mask = is_zero(tilt.current_throttle)?0:(uint8_t)tilt.tilt_mask.get();
+            motors->output_motor_mask(tilt.current_throttle, mask);
             // prevent motor shutdown
             tilt.motors_active = true;
         }
@@ -98,6 +95,66 @@ void QuadPlane::tiltrotor_update(void)
         // relies heavily on Q_VFWD_GAIN being set appropriately.
         float settilt = constrain_float(SRV_Channels::get_output_scaled(SRV_Channel::k_throttle) / 50.0f, 0, 1);
         tiltrotor_slew(settilt * tilt.max_angle_deg / 90.0f);
+    }
+}
+
+
+/*
+  output a slew limited tiltrotor angle. tilt is 0 or 1
+ */
+void QuadPlane::tiltrotor_binary_slew(bool forward)
+{
+    SRV_Channels::set_output_scaled(SRV_Channel::k_motor_tilt, forward?1000:0);
+
+    float max_change = (tilt.max_rate_dps.get() * plane.G_Dt) / 90.0f;
+    if (forward) {
+        tilt.current_tilt = constrain_float(tilt.current_tilt+max_change, 0, 1);
+    } else {
+        tilt.current_tilt = constrain_float(tilt.current_tilt-max_change, 0, 1);
+    }
+
+    // setup tilt compensation
+    motors->set_thrust_compensation_callback(FUNCTOR_BIND_MEMBER(&QuadPlane::tilt_compensate, void, float *, uint8_t));
+}
+
+/*
+  update motor tilt for binary tilt servos
+ */
+void QuadPlane::tiltrotor_binary_update(void)
+{
+    // motors always active
+    tilt.motors_active = true;
+
+    if (!in_vtol_mode()) {
+        // we are in pure fixed wing mode. Move the tiltable motors
+        // all the way forward and run them as a forward motor
+        tiltrotor_binary_slew(true);
+
+        float new_throttle = SRV_Channels::get_output_scaled(SRV_Channel::k_throttle)*0.01f;
+        if (tilt.current_tilt >= 1) {
+            uint8_t mask = is_zero(new_throttle)?0:(uint8_t)tilt.tilt_mask.get();
+            // the motors are all the way forward, start using them for fwd thrust
+            motors->output_motor_mask(new_throttle, mask);
+        }
+    } else {
+        tiltrotor_binary_slew(false);
+    }
+}
+
+
+/*
+  update motor tilt
+ */
+void QuadPlane::tiltrotor_update(void)
+{
+    if (tilt.tilt_mask <= 0) {
+        // no motors to tilt
+        return;
+    }
+    if (tilt.tilt_type == TILT_TYPE_BINARY) {
+        tiltrotor_binary_update();
+    } else {
+        tiltrotor_continuous_update();
     }
 }
 
@@ -171,4 +228,15 @@ void QuadPlane::tilt_compensate(float *thrust, uint8_t num_motors)
             thrust[i] *= scale;
         }
     }
+}
+
+/*
+  return true if the rotors are fully tilted forward
+ */
+bool QuadPlane::tiltrotor_fully_fwd(void)
+{
+    if (tilt.tilt_mask <= 0) {
+        return false;
+    }
+    return (tilt.current_tilt >= 1);
 }

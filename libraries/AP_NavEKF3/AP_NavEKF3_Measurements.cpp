@@ -7,8 +7,6 @@
 #include <AP_Vehicle/AP_Vehicle.h>
 #include <GCS_MAVLink/GCS.h>
 
-#include <stdio.h>
-
 extern const AP_HAL::HAL& hal;
 
 
@@ -26,9 +24,8 @@ void NavEKF3_core::readRangeFinder(void)
     // get theoretical correct range when the vehicle is on the ground
     rngOnGnd = frontend->_rng.ground_clearance_cm() * 0.01f;
 
-    // read range finder at 20Hz
-    // TODO better way of knowing if it has new data
-    if ((imuSampleTime_ms - lastRngMeasTime_ms) > 50) {
+    // limit update rate to maximum allowed by data buffers
+    if ((imuSampleTime_ms - lastRngMeasTime_ms) > frontend->sensorIntervalMin_ms) {
 
         // reset the timer used to control the measurement rate
         lastRngMeasTime_ms =  imuSampleTime_ms;
@@ -112,6 +109,11 @@ void NavEKF3_core::readRangeFinder(void)
 // this needs to be called externally.
 void NavEKF3_core::writeOptFlowMeas(uint8_t &rawFlowQuality, Vector2f &rawFlowRates, Vector2f &rawGyroRates, uint32_t &msecFlowMeas, const Vector3f &posOffset)
 {
+    // limit update rate to maximum allowed by sensor buffers
+    if ((imuSampleTime_ms - flowMeaTime_ms) < frontend->sensorIntervalMin_ms) {
+        return;
+    }
+
     // The raw measurements need to be optical flow rates in radians/second averaged across the time since the last update
     // The PX4Flow sensor outputs flow rates with the following axis and sign conventions:
     // A positive X rate is produced by a positive sensor rotation about the X axis
@@ -168,8 +170,6 @@ void NavEKF3_core::writeOptFlowMeas(uint8_t &rawFlowQuality, Vector2f &rawFlowRa
         ofDataNew.time_ms = MAX(ofDataNew.time_ms,imuDataDelayed.time_ms);
         // Save data to buffer
         storedOF.push(ofDataNew);
-        // Check for data at the fusion time horizon
-        flowDataToFuse = storedOF.recall(ofDataDelayed, imuDataDelayed.time_ms);
     }
 }
 
@@ -193,9 +193,8 @@ void NavEKF3_core::readMagData()
         return;
     }
 
-    // do not accept new compass data faster than 14Hz (nominal rate is 10Hz) to prevent high processor loading
-    // because magnetometer fusion is an expensive step and we could overflow the FIFO buffer
-    if (use_compass() && _ahrs->get_compass()->last_update_usec() - lastMagUpdate_us > 70000) {
+    // limit compass update rate to prevent high processor loading because magnetometer fusion is an expensive step and we could overflow the FIFO buffer
+    if (use_compass() && ((_ahrs->get_compass()->last_update_usec() - lastMagUpdate_us) > 1000 * frontend->sensorIntervalMin_ms)) {
         frontend->logging.log_compass = true;
 
         // If the magnetometer has timed out (been rejected too long) we find another magnetometer to use if available
@@ -282,7 +281,7 @@ void NavEKF3_core::readIMUData()
     dtIMUavg = ins.get_loop_delta_t();
 
     // the imu sample time is used as a common time reference throughout the filter
-    imuSampleTime_ms = AP_HAL::millis();
+    imuSampleTime_ms = frontend->imuSampleTime_us / 1000;
 
     // use the nominated imu or primary if not available
     if (ins.use_accel(imu_index)) {
@@ -396,8 +395,8 @@ bool NavEKF3_core::readDeltaVelocity(uint8_t ins_index, Vector3f &dVel, float &d
 void NavEKF3_core::readGpsData()
 {
     // check for new GPS data
-    // do not accept data at a faster rate than 14Hz to avoid overflowing the FIFO buffer
-    if (_ahrs->get_gps().last_message_time_ms() - lastTimeGpsReceived_ms > 70) {
+    // limit update rate to avoid overflowing the FIFO buffer
+    if (_ahrs->get_gps().last_message_time_ms() - lastTimeGpsReceived_ms > frontend->sensorIntervalMin_ms) {
         if (_ahrs->get_gps().status() >= AP_GPS::GPS_OK_FIX_3D) {
             // report GPS fix status
             gpsCheckStatus.bad_fix = false;
@@ -410,13 +409,14 @@ void NavEKF3_core::readGpsData()
 
             // estimate when the GPS fix was valid, allowing for GPS processing and other delays
             // ideally we should be using a timing signal from the GPS receiver to set this time
-            gpsDataNew.time_ms = lastTimeGpsReceived_ms - frontend->_gpsDelay_ms;
+            // Use the driver specified delay
+            gpsDataNew.time_ms = lastTimeGpsReceived_ms - (uint32_t)(_ahrs->get_gps().get_lag() * 1000.0f);
 
             // Correct for the average intersampling delay due to the filter updaterate
             gpsDataNew.time_ms -= localFilterTimeStep_ms/2;
 
-            // Prevent time delay exceeding age of oldest IMU data in the buffer
-            gpsDataNew.time_ms = MAX(gpsDataNew.time_ms,imuDataDelayed.time_ms);
+            // Prevent the time stamp falling outside the oldest and newest IMU data in the buffer
+            gpsDataNew.time_ms = MIN(MAX(gpsDataNew.time_ms,imuDataDelayed.time_ms),imuDataDownSampledNew.time_ms);
 
             // Get which GPS we are using for position information
             gpsDataNew.sensor_idx = _ahrs->get_gps().primary_sensor();
@@ -538,8 +538,8 @@ bool NavEKF3_core::readDeltaAngle(uint8_t ins_index, Vector3f &dAng) {
 void NavEKF3_core::readBaroData()
 {
     // check to see if baro measurement has changed so we know if a new measurement has arrived
-    // do not accept data at a faster rate than 14Hz to avoid overflowing the FIFO buffer
-    if (frontend->_baro.get_last_update() - lastBaroReceived_ms > 70) {
+    // limit update rate to avoid overflowing the FIFO buffer
+    if (frontend->_baro.get_last_update() - lastBaroReceived_ms > frontend->sensorIntervalMin_ms) {
         frontend->logging.log_baro = true;
 
         baroDataNew.hgt = frontend->_baro.get_altitude();
@@ -616,7 +616,7 @@ void NavEKF3_core::calcFiltGpsHgtOffset()
     // correct the EKF origin and variance estimate if the innovation variance ratio is < 5-sigma
     if (ratio < 5.0f) {
         EKF_origin.alt -= (int)(100.0f * gain * innovation);
-        ekfOriginHgtVar -= fmaxf(gain * ekfOriginHgtVar , 0.0f);
+        ekfOriginHgtVar -= MAX(gain * ekfOriginHgtVar , 0.0f);
     }
 }
 
@@ -633,8 +633,8 @@ void NavEKF3_core::readAirSpdData()
     const AP_Airspeed *aspeed = _ahrs->get_airspeed();
     if (aspeed &&
             aspeed->use() &&
-            aspeed->last_update_ms() != timeTasReceived_ms) {
-        tasDataNew.tas = aspeed->get_airspeed() * aspeed->get_EAS2TAS();
+            (aspeed->last_update_ms() - timeTasReceived_ms) > frontend->sensorIntervalMin_ms) {
+        tasDataNew.tas = aspeed->get_raw_airspeed() * aspeed->get_EAS2TAS();
         timeTasReceived_ms = aspeed->last_update_ms();
         tasDataNew.time_ms = timeTasReceived_ms - frontend->tasDelay_ms;
 
@@ -754,6 +754,11 @@ void NavEKF3_core::readRngBcnData()
 
     // Check the buffer for measurements that have been overtaken by the fusion time horizon and need to be fused
     rngBcnDataToFuse = storedRangeBeacon.recall(rngBcnDataDelayed,imuDataDelayed.time_ms);
+
+    // Correct the range beacon earth frame origin for estimated offset relative to the EKF earth frame origin
+    if (rngBcnDataToFuse) {
+        rngBcnDataDelayed.beacon_posNED += bcnPosOffsetNED;
+    }
 
 }
 

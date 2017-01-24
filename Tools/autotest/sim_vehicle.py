@@ -9,6 +9,7 @@ based on sim_vehicle.sh by Andrew Tridgell, October 2011
 from __future__ import print_function
 
 import atexit
+import errno
 import getpass
 import optparse
 import os
@@ -216,6 +217,12 @@ def find_root_dir():
     """Return path to root directory"""
     return os.path.realpath(os.path.join(find_autotest_dir(), '../..'))
 
+
+def wait_unlimited():
+    """Wait until signal received"""
+    time.sleep(987654321987654321)
+
+
 """
 make_target: option passed to make to create binaries.  Usually sitl, and "-debug" may be appended if -D is passed to sim_vehicle.py
 default_params_filename: filename of default parameters file.  Taken to be relative to autotest dir.
@@ -273,7 +280,7 @@ _options_for_frame = {
         "default_params_filename": "default_params/copter.parm",
     },
     "firefly": {
-        "waf_target": "bin/arducopter-firefly",
+        "waf_target": "bin/arduplane",
         "default_params_filename": "default_params/firefly.parm",
     },
     # HELICOPTER
@@ -310,6 +317,11 @@ _options_for_frame = {
         "make_target": "sitl",
         "waf_target": "bin/arduplane",
         "default_params_filename": "default_params/quadplane-tri.parm",
+    },
+    "quadplane-cl84" : {
+        "make_target" : "sitl",
+        "waf_target" : "bin/arduplane",
+        "default_params_filename": "default_params/quadplane-cl84.parm",
     },
     "quadplane": {
         "waf_target": "bin/arduplane",
@@ -745,6 +757,8 @@ group_sim.add_option("-w", "--wipe-eeprom", action='store_true', default=False, 
 group_sim.add_option("-m", "--mavproxy-args", default=None, type='string', help="additional arguments to pass to mavproxy.py")
 group_sim.add_option("", "--strace", action='store_true', default=False, help="strace the ArduPilot binary")
 group_sim.add_option("", "--model", type='string', default=None, help="Override simulation model to use")
+group_sim.add_option("", "--use-dir", type='string', default=None, help="Store SITL state and output in named directory")
+group_sim.add_option("", "--no-mavproxy", action='store_true', default=False, help="Don't launch MAVProxy")
 parser.add_option_group(group_sim)
 
 
@@ -851,6 +865,15 @@ else:
     location = find_location_by_name(find_autotest_dir(), cmd_opts.location)
     progress("Starting up at %s (%s)" % (location, cmd_opts.location))
 
+if cmd_opts.use_dir is not None:
+    new_dir = cmd_opts.use_dir
+    try:
+        os.makedirs(os.path.realpath(new_dir))
+    except OSError as exception:
+        if exception.errno != errno.EEXIST:
+            raise
+    os.chdir(new_dir)
+
 if cmd_opts.hil:
     # (unlikely)
     run_in_terminal_window(find_autotest_dir(), "JSBSim", [os.path.join(find_autotest_dir(), "jsb_sim/runsim.py"), "--home", location, "--speedup=" + str(cmd_opts.speedup)])
@@ -877,6 +900,14 @@ if cmd_opts.delay_start:
     progress("Sleeping for %f seconds" % (cmd_opts.delay_start,))
     time.sleep(float(cmd_opts.delay_start))
 
-start_mavproxy(cmd_opts, frame_infos)
+try:
+    if cmd_opts.no_mavproxy:
+        time.sleep(3)  # Just wait to output the last command after run_in_terminal_window.sh
+        progress("Waiting for SITL to exit")
+        wait_unlimited()
+    else:
+        start_mavproxy(cmd_opts, frame_infos)
+except KeyboardInterrupt:
+    progress("Keyboard Interrupt received ...")
 
 sys.exit(0)

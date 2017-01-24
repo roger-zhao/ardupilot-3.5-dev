@@ -699,7 +699,9 @@ AP_InertialSensor::detect_backends(void)
         _add_backend(AP_InertialSensor_LSM9DS0::probe(*this,
                                                       hal.spi->get_device(HAL_INS_LSM9DS0_G_NAME),
                                                       hal.spi->get_device(HAL_INS_LSM9DS0_A_NAME),
-                                                      ROTATION_ROLL_180, ROTATION_ROLL_180_YAW_270));
+                                                      ROTATION_ROLL_180,
+                                                      ROTATION_ROLL_180_YAW_270,
+                                                      ROTATION_PITCH_180));
         break;
 
     case AP_BoardConfig::PX4_BOARD_PIXHAWK2:
@@ -709,7 +711,9 @@ AP_InertialSensor::detect_backends(void)
         _add_backend(AP_InertialSensor_LSM9DS0::probe(*this,
                                                       hal.spi->get_device(HAL_INS_LSM9DS0_EXT_G_NAME),
                                                       hal.spi->get_device(HAL_INS_LSM9DS0_EXT_A_NAME),
-                                                      ROTATION_ROLL_180_YAW_270, ROTATION_ROLL_180_YAW_90));
+                                                      ROTATION_ROLL_180_YAW_270,
+                                                      ROTATION_ROLL_180_YAW_90,
+                                                      ROTATION_ROLL_180_YAW_90));
         _add_backend(AP_InertialSensor_Invensense::probe(*this, hal.spi->get_device(HAL_INS_MPU9250_NAME), ROTATION_YAW_270));
         break;
 
@@ -804,7 +808,7 @@ bool AP_InertialSensor::_calculate_trim(const Vector3f &accel_sample, float& tri
     trim_roll = atan2f(-accel_sample.y, -accel_sample.z);
     if (fabsf(trim_roll) > radians(10) ||
         fabsf(trim_pitch) > radians(10)) {
-        hal.console->println("trim over maximum of 10 degrees");
+        hal.console->printf("trim over maximum of 10 degrees\n");
         return false;
     }
     hal.console->printf("Trim OK: roll=%.2f pitch=%.2f\n",
@@ -1019,7 +1023,7 @@ AP_InertialSensor::_init_gyro()
     AP_Notify::flags.initialising = true;
 
     // cold start
-    hal.console->print("Init Gyro");
+    hal.console->printf("Init Gyro");
 
     /*
       we do the gyro calibration with no board rotation. This avoids
@@ -1058,7 +1062,7 @@ AP_InertialSensor::_init_gyro()
 
         memset(diff_norm, 0, sizeof(diff_norm));
 
-        hal.console->print("*");
+        hal.console->printf("*");
 
         for (uint8_t k=0; k<num_gyros; k++) {
             gyro_sum[k].zero();
@@ -1111,7 +1115,7 @@ AP_InertialSensor::_init_gyro()
 
     // we've kept the user waiting long enough - use the best pair we
     // found so far
-    hal.console->println();
+    hal.console->printf("\n");
     for (uint8_t k=0; k<num_gyros; k++) {
         if (!converged[k]) {
             hal.console->printf("gyro[%u] did not converge: diff=%f dps (expected < %f)\n",
@@ -1650,7 +1654,7 @@ void AP_InertialSensor::_acal_save_calibrations()
 
     if (fabsf(_trim_roll) > radians(10) ||
         fabsf(_trim_pitch) > radians(10)) {
-        hal.console->print("ERR: Trim over maximum of 10 degrees!!");
+        hal.console->printf("ERR: Trim over maximum of 10 degrees!!");
         _new_trim = false;  //we have either got faulty level during acal or highly misaligned accelerometers
     }
 

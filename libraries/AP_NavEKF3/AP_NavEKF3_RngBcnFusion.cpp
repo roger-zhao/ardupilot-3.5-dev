@@ -8,8 +8,6 @@
 #include <AP_Vehicle/AP_Vehicle.h>
 #include <GCS_MAVLink/GCS.h>
 
-#include <stdio.h>
-
 extern const AP_HAL::HAL& hal;
 
 /********************************************************
@@ -25,11 +23,27 @@ void NavEKF3_core::SelectRngBcnFusion()
     // Determine if we need to fuse range beacon data on this time step
     if (rngBcnDataToFuse) {
         if (PV_AidingMode == AID_ABSOLUTE) {
-            // Normal operating mode is to fuse the range data into the main filter
-            FuseRngBcn();
+            if (!filterStatus.flags.using_gps) {
+                if (!bcnOriginEstInit && rngBcnAlignmentCompleted) {
+                    bcnOriginEstInit = true;
+                    bcnPosOffsetNED.x = receiverPos.x - stateStruct.position.x;
+                    bcnPosOffsetNED.y = receiverPos.y - stateStruct.position.y;
+                }
+                // If we aren't using GPS, then the beacons are used as the primary means of position reference
+                FuseRngBcn();
+            } else {
+                // If we are using GPS, then GPS is the primary reference, but we continue to use the beacon data
+                // to calculate an independant position that is used to update the beacon position offset if we need to
+                // start using beacon data as the primary reference.
+                FuseRngBcnStatic();
+                // record that the beacon origin needs to be initialised
+                bcnOriginEstInit = false;
+            }
         } else {
-            // If we aren't able to use the data in the main filter, use a simple 3-state filter to estimte position only
+            // If we aren't able to use the data in the main filter, use a simple 3-state filter to estimate position only
             FuseRngBcnStatic();
+            // record that the beacon origin needs to be initialised
+            bcnOriginEstInit = false;
         }
     }
 }
@@ -53,7 +67,7 @@ void NavEKF3_core::FuseRngBcn()
         // calculate the vertical offset from EKF datum to beacon datum
         CalcRangeBeaconPosDownOffset(R_BCN, stateStruct.position, false);
     } else {
-        bcnPosOffset = 0.0f;
+        bcnPosOffsetNED.z = 0.0f;
     }
 
     // copy required states to local variable names
@@ -62,7 +76,7 @@ void NavEKF3_core::FuseRngBcn()
     pd = stateStruct.position.z;
     bcn_pn = rngBcnDataDelayed.beacon_posNED.x;
     bcn_pe = rngBcnDataDelayed.beacon_posNED.y;
-    bcn_pd = rngBcnDataDelayed.beacon_posNED.z + bcnPosOffset;
+    bcn_pd = rngBcnDataDelayed.beacon_posNED.z + bcnPosOffsetNED.z;
 
     // predicted range
     Vector3f deltaPosNED = stateStruct.position - rngBcnDataDelayed.beacon_posNED;
@@ -313,7 +327,7 @@ void NavEKF3_core::FuseRngBcnStatic()
 
             } else {
                 // we are using the beacons as the primary height source, so don't modify their vertical position
-                bcnPosOffset = 0.0f;
+                bcnPosOffsetNED.z = 0.0f;
 
             }
         } else {
@@ -344,7 +358,7 @@ void NavEKF3_core::FuseRngBcnStatic()
                 bcnPosDownOffsetMin = stateStruct.position.z - receverPosDownMax;
             } else {
                 // We are using the beacons as the primary height reference, so don't modify their vertical position
-                bcnPosOffset = 0.0f;
+                bcnPosOffsetNED.z = 0.0f;
             }
         }
 
@@ -354,7 +368,7 @@ void NavEKF3_core::FuseRngBcnStatic()
         }
 
         // calculate the observation jacobian
-        float t2 = rngBcnDataDelayed.beacon_posNED.z - receiverPos.z + bcnPosOffset;
+        float t2 = rngBcnDataDelayed.beacon_posNED.z - receiverPos.z + bcnPosOffsetNED.z;
         float t3 = rngBcnDataDelayed.beacon_posNED.y - receiverPos.y;
         float t4 = rngBcnDataDelayed.beacon_posNED.x - receiverPos.x;
         float t5 = t2*t2;
@@ -405,52 +419,65 @@ void NavEKF3_core::FuseRngBcnStatic()
 
         // calculate range measurement innovation
         Vector3f deltaPosNED = receiverPos - rngBcnDataDelayed.beacon_posNED;
-        deltaPosNED.z -= bcnPosOffset;
+        deltaPosNED.z -= bcnPosOffsetNED.z;
         innovRngBcn = deltaPosNED.length() - rngBcnDataDelayed.rng;
 
-        // update the state
-        receiverPos.x -= K_RNG[0] * innovRngBcn;
-        receiverPos.y -= K_RNG[1] * innovRngBcn;
-        receiverPos.z -= K_RNG[2] * innovRngBcn;
-        receiverPos.z = MAX(receiverPos.z, minBcnPosD + 1.2f);
+        // calculate the innovation consistency test ratio
+        rngBcnTestRatio = sq(innovRngBcn) / (sq(MAX(0.01f * (float)frontend->_rngBcnInnovGate, 1.0f)) * varInnovRngBcn);
 
-        // calculate the covariance correction
-        for (unsigned i = 0; i<=2; i++) {
-            for (unsigned j = 0; j<=2; j++) {
-                KH[i][j] = K_RNG[i] * H_RNG[j];
-            }
-        }
-        for (unsigned j = 0; j<=2; j++) {
+        // fail if the ratio is > 1, but don't fail if bad IMU data
+        rngBcnHealth = ((rngBcnTestRatio < 1.0f) || badIMUdata || !rngBcnAlignmentCompleted);
+
+        // test the ratio before fusing data
+        if (rngBcnHealth) {
+
+            // update the state
+            receiverPos.x -= K_RNG[0] * innovRngBcn;
+            receiverPos.y -= K_RNG[1] * innovRngBcn;
+            receiverPos.z -= K_RNG[2] * innovRngBcn;
+
+            // calculate the covariance correction
             for (unsigned i = 0; i<=2; i++) {
-                ftype res = 0;
-                res += KH[i][0] * receiverPosCov[0][j];
-                res += KH[i][1] * receiverPosCov[1][j];
-                res += KH[i][2] * receiverPosCov[2][j];
-                KHP[i][j] = res;
+                for (unsigned j = 0; j<=2; j++) {
+                    KH[i][j] = K_RNG[i] * H_RNG[j];
+                }
             }
-        }
-        // prevent negative variances
-        for (uint8_t i= 0; i<=2; i++) {
-            if (receiverPosCov[i][i] < 0.0f) {
-                receiverPosCov[i][i] = 0.0f;
-                KHP[i][i] = 0.0f;
-            } else if (KHP[i][i] > receiverPosCov[i][i]) {
-                KHP[i][i] = receiverPosCov[i][i];
+            for (unsigned j = 0; j<=2; j++) {
+                for (unsigned i = 0; i<=2; i++) {
+                    ftype res = 0;
+                    res += KH[i][0] * receiverPosCov[0][j];
+                    res += KH[i][1] * receiverPosCov[1][j];
+                    res += KH[i][2] * receiverPosCov[2][j];
+                    KHP[i][j] = res;
+                }
             }
-        }
-        // apply the covariance correction
-        for (uint8_t i= 0; i<=2; i++) {
-            for (uint8_t j= 0; j<=2; j++) {
-                receiverPosCov[i][j] -= KHP[i][j];
+
+            // prevent negative variances
+            for (uint8_t i= 0; i<=2; i++) {
+                if (receiverPosCov[i][i] < 0.0f) {
+                    receiverPosCov[i][i] = 0.0f;
+                    KHP[i][i] = 0.0f;
+                } else if (KHP[i][i] > receiverPosCov[i][i]) {
+                    KHP[i][i] = receiverPosCov[i][i];
+                }
             }
-        }
-        // ensure the covariance matrix is symmetric
-        for (uint8_t i=1; i<=2; i++) {
-            for (uint8_t j=0; j<=i-1; j++) {
-                float temp = 0.5f*(receiverPosCov[i][j] + receiverPosCov[j][i]);
-                receiverPosCov[i][j] = temp;
-                receiverPosCov[j][i] = temp;
+
+            // apply the covariance correction
+            for (uint8_t i= 0; i<=2; i++) {
+                for (uint8_t j= 0; j<=2; j++) {
+                    receiverPosCov[i][j] -= KHP[i][j];
+                }
             }
+
+            // ensure the covariance matrix is symmetric
+            for (uint8_t i=1; i<=2; i++) {
+                for (uint8_t j=0; j<=i-1; j++) {
+                    float temp = 0.5f*(receiverPosCov[i][j] + receiverPosCov[j][i]);
+                    receiverPosCov[i][j] = temp;
+                    receiverPosCov[j][i] = temp;
+                }
+            }
+
         }
 
         if (numBcnMeas >= 100) {
@@ -458,6 +485,12 @@ void NavEKF3_core::FuseRngBcnStatic()
             // TODO monitor stability of the position estimate
             rngBcnAlignmentCompleted = true;
         }
+        // Update the fusion report
+        rngBcnFusionReport[rngBcnDataDelayed.beacon_ID].beaconPosNED = rngBcnDataDelayed.beacon_posNED;
+        rngBcnFusionReport[rngBcnDataDelayed.beacon_ID].innov = innovRngBcn;
+        rngBcnFusionReport[rngBcnDataDelayed.beacon_ID].innovVar = varInnovRngBcn;
+        rngBcnFusionReport[rngBcnDataDelayed.beacon_ID].rng = rngBcnDataDelayed.rng;
+        rngBcnFusionReport[rngBcnDataDelayed.beacon_ID].testRatio = rngBcnTestRatio;
     }
 }
 
@@ -571,10 +604,10 @@ void NavEKF3_core::CalcRangeBeaconPosDownOffset(float obsVar, Vector3f &vehicleP
     // calculate the innovation for the main filter using the offset with the smallest innovation history
     // apply hysteresis to prevent rapid switching
     if (!usingMinHypothesis && OffsetMinInnovFilt < 0.8f * OffsetMaxInnovFilt) {
-        bcnPosOffset = bcnPosDownOffsetMin;
+        bcnPosOffsetNED.z = bcnPosDownOffsetMin;
         usingMinHypothesis = true;
     } else if (usingMinHypothesis && OffsetMaxInnovFilt < 0.8f * OffsetMinInnovFilt) {
-        bcnPosOffset = bcnPosDownOffsetMax;
+        bcnPosOffsetNED.z = bcnPosDownOffsetMax;
         usingMinHypothesis = false;
     }
 

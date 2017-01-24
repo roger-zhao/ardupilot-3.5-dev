@@ -9,8 +9,6 @@
 #include <AP_AHRS/AP_AHRS.h>
 #include <AP_Vehicle/AP_Vehicle.h>
 
-#include <stdio.h>
-
 extern const AP_HAL::HAL& hal;
 
 /********************************************************
@@ -35,7 +33,7 @@ void NavEKF3_core::ResetVelocity(void)
         P[5][5] = P[4][4] = sq(frontend->_gpsHorizVelNoise);
     } else {
         // reset horizontal velocity states to the GPS velocity if available
-        if (imuSampleTime_ms - lastTimeGpsReceived_ms < 250) {
+        if ((imuSampleTime_ms - lastTimeGpsReceived_ms < 250 && velResetSource == DEFAULT) || velResetSource == GPS) {
             stateStruct.velocity.x  = gpsDataNew.vel.x;
             stateStruct.velocity.y  = gpsDataNew.vel.y;
             // set the variances using the reported GPS speed accuracy
@@ -69,6 +67,8 @@ void NavEKF3_core::ResetVelocity(void)
     // store the time of the reset
     lastVelReset_ms = imuSampleTime_ms;
 
+    // clear reset data source preference
+    velResetSource = DEFAULT;
 
 }
 
@@ -91,7 +91,7 @@ void NavEKF3_core::ResetPosition(void)
         P[7][7] = P[8][8] = sq(frontend->_gpsHorizPosNoise);
     } else  {
         // Use GPS data as first preference if fresh data is available
-        if (imuSampleTime_ms - lastTimeGpsReceived_ms < 250) {
+        if ((imuSampleTime_ms - lastTimeGpsReceived_ms < 250 && posResetSource == DEFAULT) || posResetSource == GPS) {
             // write to state vector and compensate for offset  between last GPS measurement and the EKF time horizon
             stateStruct.position.x = gpsDataNew.pos.x  + 0.001f*gpsDataNew.vel.x*(float(imuDataDelayed.time_ms) - float(gpsDataNew.time_ms));
             stateStruct.position.y = gpsDataNew.pos.y  + 0.001f*gpsDataNew.vel.y*(float(imuDataDelayed.time_ms) - float(gpsDataNew.time_ms));
@@ -100,7 +100,7 @@ void NavEKF3_core::ResetPosition(void)
             // clear the timeout flags and counters
             posTimeout = false;
             lastPosPassTime_ms = imuSampleTime_ms;
-        } else if (imuSampleTime_ms - rngBcnLast3DmeasTime_ms < 250) {
+        } else if ((imuSampleTime_ms - rngBcnLast3DmeasTime_ms < 250 && posResetSource == DEFAULT) || posResetSource == RNGBCN) {
             // use the range beacon data as a second preference
             stateStruct.position.x = receiverPos.x;
             stateStruct.position.y = receiverPos.y;
@@ -127,6 +127,9 @@ void NavEKF3_core::ResetPosition(void)
 
     // store the time of the reset
     lastPosReset_ms = imuSampleTime_ms;
+
+    // clear reset source preference
+    posResetSource = DEFAULT;
 
 }
 
@@ -700,10 +703,18 @@ void NavEKF3_core::selectHeightForFusion()
             // If the terrain height is consistent and we are moving slowly, then it can be
             // used as a height reference in combination with a range finder
             // apply a hysteresis to the speed check to prevent rapid switching
-            float horizSpeed = norm(stateStruct.velocity.x, stateStruct.velocity.y);
-            bool dontTrustTerrain = ((horizSpeed > frontend->_useRngSwSpd) && filterStatus.flags.horiz_vel) || !terrainHgtStable;
-            float trust_spd_trigger = MAX((frontend->_useRngSwSpd - 1.0f),(frontend->_useRngSwSpd * 0.5f));
-            bool trustTerrain = (horizSpeed < trust_spd_trigger) && terrainHgtStable;
+            bool dontTrustTerrain, trustTerrain;
+            if (filterStatus.flags.horiz_vel) {
+                // We can use the velocity estimate
+                float horizSpeed = norm(stateStruct.velocity.x, stateStruct.velocity.y);
+                dontTrustTerrain = (horizSpeed > frontend->_useRngSwSpd) || !terrainHgtStable;
+                float trust_spd_trigger = MAX((frontend->_useRngSwSpd - 1.0f),(frontend->_useRngSwSpd * 0.5f));
+                trustTerrain = (horizSpeed < trust_spd_trigger) && terrainHgtStable;
+            } else {
+                // We can't use the velocity estimate
+                dontTrustTerrain = !terrainHgtStable;
+                trustTerrain = terrainHgtStable;
+            }
 
             /*
              * Switch between range finder and primary height source using height above ground and speed thresholds with

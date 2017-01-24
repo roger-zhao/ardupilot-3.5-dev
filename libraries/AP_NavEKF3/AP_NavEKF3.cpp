@@ -182,14 +182,9 @@ const AP_Param::GroupInfo NavEKF3::var_info[] = {
     // @Units: m
     AP_GROUPINFO("GLITCH_RAD", 7, NavEKF3, _gpsGlitchRadiusMax, GLITCH_RADIUS_DEFAULT),
 
-    // @Param: GPS_DELAY
-    // @DisplayName: GPS measurement delay (msec)
-    // @Description: This is the number of msec that the GPS measurements lag behind the inertial measurements.
-    // @Range: 0 250
-    // @Increment: 10
-    // @User: Advanced
-    // @Units: msec
-    AP_GROUPINFO("GPS_DELAY", 8, NavEKF3, _gpsDelay_ms, 220),
+    // 8 previously used for EKF3_GPS_DELAY parameter that has been deprecated.
+    // The EKF now takes its GPs delay form the GPS library with the default delays
+    // specified by the GPS_DELAY and GPS_DELAY2 parameters.
 
     // Height measurement parameters
 
@@ -222,8 +217,9 @@ const AP_Param::GroupInfo NavEKF3::var_info[] = {
     // @Description: This is the number of msec that the Height measurements lag behind the inertial measurements.
     // @Range: 0 250
     // @Increment: 10
+    // @RebootRequired: True
     // @User: Advanced
-    // @Units: msec
+    // @Units: milliseconds
     AP_GROUPINFO("HGT_DELAY", 12, NavEKF3, _hgtDelay_ms, 60),
 
     // Magnetometer measurement parameters
@@ -323,8 +319,9 @@ const AP_Param::GroupInfo NavEKF3::var_info[] = {
     // @Description: This is the number of msec that the optical flow measurements lag behind the inertial measurements. It is the time from the end of the optical flow averaging period and does not include the time delay due to the 100msec of averaging within the flow sensor.
     // @Range: 0 250
     // @Increment: 10
+    // @RebootRequired: True
     // @User: Advanced
-    // @Units: msec
+    // @Units: milliseconds
     AP_GROUPINFO("FLOW_DELAY", 23, NavEKF3, _flowDelay_ms, FLOW_MEAS_DELAY),
 
     // State and Covariance Predition Parameters
@@ -365,7 +362,7 @@ const AP_Param::GroupInfo NavEKF3::var_info[] = {
     // @Units: m/s/s/s
     AP_GROUPINFO("ABIAS_P_NSE", 28, NavEKF3, _accelBiasProcessNoise, ABIAS_P_NSE_DEFAULT),
 
-    // 29 previously used for EK2_MAG_P_NSE parameter that has been replaced with EK2_MAGE_P_NSE and EK2_MAGB_P_NSE
+    // 29 previously used for EK2_MAG_P_NSE parameter that has been replaced with EK3_MAGE_P_NSE and EK3_MAGB_P_NSE
 
     // @Param: WIND_P_NSE
     // @DisplayName: Wind velocity process noise (m/s^2)
@@ -501,11 +498,12 @@ const AP_Param::GroupInfo NavEKF3::var_info[] = {
 
     // @Param: BCN_DELAY
     // @DisplayName: Range beacon measurement delay (msec)
-    // @Description: This is the number of msec that the range beacon measurements lag behind the inertial measurements. It is the time from the end of the optical flow averaging period and does not include the time delay due to the 100msec of averaging within the flow sensor.
+    // @Description: This is the number of msec that the range beacon measurements lag behind the inertial measurements.
     // @Range: 0 250
     // @Increment: 10
+    // @RebootRequired: True
     // @User: Advanced
-    // @Units: msec
+    // @Units: milliseconds
     AP_GROUPINFO("BCN_DELAY", 46, NavEKF3, _rngBcnDelay_ms, 50),
 
     // @Param: RNG_USE_SPD
@@ -537,7 +535,7 @@ NavEKF3::NavEKF3(const AP_AHRS *ahrs, AP_Baro &baro, const RangeFinder &rng) :
     gpsDVelVarAccScale(0.07f),      // Scale factor applied to vertical velocity measurement variance due to manoeuvre acceleration - used when GPS doesn't report speed error
     gpsPosVarAccScale(0.05f),       // Scale factor applied to horizontal position measurement variance due to manoeuvre acceleration
     magDelay_ms(60),                // Magnetometer measurement delay (msec)
-    tasDelay_ms(240),               // Airspeed measurement delay (msec)
+    tasDelay_ms(100),               // Airspeed measurement delay (msec)
     tiltDriftTimeMax_ms(15000),      // Maximum number of ms allowed without any form of tilt aiding (GPS, flow, TAS, etc)
     posRetryTimeUseVel_ms(10000),   // Position aiding retry time with velocity measurements (msec)
     posRetryTimeNoVel_ms(7000),     // Position aiding retry time without velocity measurements (msec)
@@ -559,6 +557,7 @@ NavEKF3::NavEKF3(const AP_AHRS *ahrs, AP_Baro &baro, const RangeFinder &rng) :
     gndEffectBaroScaler(4.0f),      // scaler applied to the barometer observation variance when operating in ground effect
     gndGradientSigma(50),           // RMS terrain gradient percentage assumed by the terrain height estimation
     fusionTimeStep_ms(10),          // The minimum number of msec between covariance prediction and fusion operations
+    sensorIntervalMin_ms(50),       // The minimum allowed time between measurements from any non-IMU sensor (msec)
     runCoreSelection(false)         // true when the default primary core has stabilised after startup and core selection can run
 {
     AP_Param::setup_object_defaults(this, var_info);
@@ -604,33 +603,43 @@ bool NavEKF3::InitialiseFilter(void)
 
     imuSampleTime_us = AP_HAL::micros64();
 
-    // see if we will be doing logging
-    DataFlash_Class *dataflash = DataFlash_Class::instance();
-    if (dataflash != nullptr) {
-        logging.enabled = dataflash->log_replay();
-    }
-    
     if (core == nullptr) {
+
+        // see if we will be doing logging
+        DataFlash_Class *dataflash = DataFlash_Class::instance();
+        if (dataflash != nullptr) {
+            logging.enabled = dataflash->log_replay();
+        }
 
         // don't run multiple filters for 1 IMU
         const AP_InertialSensor &ins = _ahrs->get_ins();
         uint8_t mask = (1U<<ins.get_accel_count())-1;
         _imuMask.set(_imuMask.get() & mask);
         
-        // count IMUs from mask
+        // initialise the setup variables
+        for (uint8_t i=0; i<7; i++) {
+            coreSetupRequired[i] = false;
+            coreImuIndex[i] = 0;
+        }
         num_cores = 0;
+
+        // count IMUs from mask
         for (uint8_t i=0; i<7; i++) {
             if (_imuMask & (1U<<i)) {
+                coreSetupRequired[num_cores] = true;
+                coreImuIndex[num_cores] = i;
                 num_cores++;
             }
         }
 
+        // check if there is enough memory to create the EKF cores
         if (hal.util->available_memory() < sizeof(NavEKF3_core)*num_cores + 4096) {
             GCS_MAVLINK::send_statustext_all(MAV_SEVERITY_CRITICAL, "NavEKF3: not enough memory");
             _enable.set(0);
             return false;
         }
         
+        // create the cores
         core = new NavEKF3_core[num_cores];
         if (core == nullptr) {
             _enable.set(0);
@@ -638,22 +647,24 @@ bool NavEKF3::InitialiseFilter(void)
             return false;
         }
 
-        // set the IMU index for the cores
-        num_cores = 0;
-        for (uint8_t i=0; i<7; i++) {
-            if (_imuMask & (1U<<i)) {
-                if(!core[num_cores].setup_core(this, i, num_cores)) {
-                    return false;
-                }
-                num_cores++;
-            }
-        }
-
-        // Set the primary initially to be the lowest index
-        primary = 0;
     }
 
-    // initialse the cores. We return success only if all cores
+    // Set up any cores that have been created
+    // This specifies the IMU to be used and creates the data buffers
+    // If we are unble to set up a core, return false and try again next time the function is called
+    for (uint8_t core_index=0; core_index<num_cores; core_index++) {
+        if (coreSetupRequired[core_index]) {
+            coreSetupRequired[core_index] = !core[core_index].setup_core(this, coreImuIndex[core_index], core_index);
+            if(coreSetupRequired[core_index]) {
+                return false;
+            }
+        }
+    }
+
+    // Set the primary initially to be the lowest index
+    primary = 0;
+
+    // initialise the cores. We return success only if all cores
     // initialise successfully
     bool ret = true;
     for (uint8_t i=0; i<num_cores; i++) {
@@ -874,11 +885,9 @@ bool NavEKF3::resetHeightDatum(void)
 }
 
 // Commands the EKF to not use GPS.
-// This command must be sent prior to arming as it will only be actioned when the filter is in static mode
-// This command is forgotten by the EKF each time it goes back into static mode (eg the vehicle disarms)
+// This command must be sent prior to vehicle arming and EKF commencement of GPS usage
 // Returns 0 if command rejected
-// Returns 1 if attitude, vertical velocity and vertical position will be provided
-// Returns 2 if attitude, 3D-velocity, vertical position and relative horizontal position will be provided
+// Returns 1 if command accepted
 uint8_t NavEKF3::setInhibitGPS(void)
 {
     if (!core) {
@@ -1087,11 +1096,12 @@ void NavEKF3::getFlowDebug(int8_t instance, float &varFlow, float &gndOffset, fl
 }
 
 // return data for debugging range beacon fusion
-bool NavEKF3::getRangeBeaconDebug(int8_t instance, uint8_t &ID, float &rng, float &innov, float &innovVar, float &testRatio, Vector3f &beaconPosNED, float &offsetHigh, float &offsetLow)
+bool NavEKF3::getRangeBeaconDebug(int8_t instance, uint8_t &ID, float &rng, float &innov, float &innovVar, float &testRatio, Vector3f &beaconPosNED,
+                                  float &offsetHigh, float &offsetLow, Vector3f &posNED)
 {
     if (instance < 0 || instance >= num_cores) instance = primary;
     if (core) {
-        return core[instance].getRangeBeaconDebug(ID, rng, innov, innovVar, testRatio, beaconPosNED, offsetHigh, offsetLow);
+        return core[instance].getRangeBeaconDebug(ID, rng, innov, innovVar, testRatio, beaconPosNED, offsetHigh, offsetLow, posNED);
     } else {
         return false;
     }

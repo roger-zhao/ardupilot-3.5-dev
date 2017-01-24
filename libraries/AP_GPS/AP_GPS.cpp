@@ -198,6 +198,21 @@ const AP_Param::GroupInfo AP_GPS::var_info[] = {
     // @User: Advanced
     AP_GROUPINFO("POS2", 17, AP_GPS, _antenna_offset[1], 0.0f),
 
+    // @Param: DELAY_MS
+    // @DisplayName: GPS delay in milliseconds
+    // @Description: Controls the amount of GPS  measurement delay that the autopilot compensates for. Set to zero to use the default delay for the detected GPS type.
+    // @Units: milliseconds
+    // @Range: 0 250
+    // @User: Advanced
+    AP_GROUPINFO("DELAY_MS", 18, AP_GPS, _delay_ms[0], 0),
+
+    // @Param: DELAY_MS2
+    // @DisplayName: GPS 2 delay in milliseconds
+    // @Description: Controls the amount of GPS  measurement delay that the autopilot compensates for. Set to zero to use the default delay for the detected GPS type.
+    // @Units: milliseconds
+    // @Range: 0 250
+    // @User: Advanced
+    AP_GROUPINFO("DELAY_MS2", 19, AP_GPS, _delay_ms[1], 0),
     AP_GROUPEND
 };
 
@@ -364,15 +379,19 @@ AP_GPS::detect_instance(uint8_t instance)
           running a uBlox at less than 38400 will lead to packet
           corruption, as we can't receive the packets in the 200ms
           window for 5Hz fixes. The NMEA startup message should force
-          the uBlox into 38400 no matter what rate it is configured
+          the uBlox into 115200 no matter what rate it is configured
           for.
         */
         if ((_type[instance] == GPS_TYPE_AUTO || _type[instance] == GPS_TYPE_UBLOX) &&
-            _baudrates[dstate->current_baud] >= 38400 &&
+            ((!_auto_config && _baudrates[dstate->current_baud] >= 38400) ||
+             _baudrates[dstate->current_baud] == 115200) &&
             AP_GPS_UBLOX::_detect(dstate->ublox_detect_state, data)) {
             _broadcast_gps_type("u-blox", instance, dstate->current_baud);
             new_gps = new AP_GPS_UBLOX(*this, state[instance], _port[instance]);
         } 
+#if !HAL_MINIMIZE_FEATURES
+        // we drop the MTK drivers when building a small build as they are so rarely used
+        // and are surprisingly large
         else if ((_type[instance] == GPS_TYPE_AUTO || _type[instance] == GPS_TYPE_MTK19) &&
                  AP_GPS_MTK19::_detect(dstate->mtk19_detect_state, data)) {
             _broadcast_gps_type("MTK19", instance, dstate->current_baud);
@@ -383,17 +402,19 @@ AP_GPS::detect_instance(uint8_t instance)
             _broadcast_gps_type("MTK", instance, dstate->current_baud);
             new_gps = new AP_GPS_MTK(*this, state[instance], _port[instance]);
         }
+#endif
         else if ((_type[instance] == GPS_TYPE_AUTO || _type[instance] == GPS_TYPE_SBP) &&
                  AP_GPS_SBP::_detect(dstate->sbp_detect_state, data)) {
             _broadcast_gps_type("SBP", instance, dstate->current_baud);
             new_gps = new AP_GPS_SBP(*this, state[instance], _port[instance]);
         }
-        // save a bit of code space on a 1280
+#if !HAL_MINIMIZE_FEATURES
         else if ((_type[instance] == GPS_TYPE_AUTO || _type[instance] == GPS_TYPE_SIRF) &&
                  AP_GPS_SIRF::_detect(dstate->sirf_detect_state, data)) {
             _broadcast_gps_type("SIRF", instance, dstate->current_baud);
             new_gps = new AP_GPS_SIRF(*this, state[instance], _port[instance]);
         }
+#endif
         else if ((_type[instance] == GPS_TYPE_AUTO || _type[instance] == GPS_TYPE_ERB) &&
                  AP_GPS_ERB::_detect(dstate->erb_detect_state, data)) {
             _broadcast_gps_type("ERB", instance, dstate->current_baud);
@@ -859,4 +880,22 @@ void AP_GPS::inject_data_all(const uint8_t *data, uint16_t len)
         }
     }
     
+}
+
+/*
+  return expected lag from a GPS
+ */
+float AP_GPS::get_lag(uint8_t instance) const
+{
+    if (_delay_ms[instance] > 0) {
+        // if the user has specified a non zero time delay, always return that value
+        return 0.001f * (float)_delay_ms[instance];
+    } else if (drivers[instance] == nullptr || state[instance].status == NO_GPS) {
+        // no GPS was detected in this instance
+        // so return a default delay of 1 measurement interval
+        return 0.001f * (float)_rate_ms[instance];
+    } else {
+        // the user has not specified a delay so we determine it from the GPS type
+        return drivers[instance]->get_lag();
+    }
 }

@@ -43,6 +43,7 @@ public:
         AP_Int16 pitch_limit_min_cd;        
         AP_Int8  autotune_level;
         AP_Int8  stall_prevention;
+        AP_Int16 loiter_radius;
 
         struct Rangefinder_State {
             bool in_range:1;
@@ -64,9 +65,7 @@ public:
             FLIGHT_TAKEOFF       = 1,
             FLIGHT_VTOL          = 2,
             FLIGHT_NORMAL        = 3,
-            FLIGHT_LAND_APPROACH = 4,
-            FLIGHT_LAND_PREFLARE = 5,
-            FLIGHT_LAND_FINAL    = 6,
+            FLIGHT_LAND          = 4,
             FLIGHT_ABORT_LAND    = 7
         };
     };

@@ -1,7 +1,4 @@
 /*
-  ToshibaLED PX4 driver
-*/
-/*
    This program is free software: you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
    the Free Software Foundation, either version 3 of the License, or
@@ -17,30 +14,30 @@
  */
 #pragma once
 
-#include <AP_Math/AP_Math.h>
-#include <AP_Math/vectorN.h>
+/*
+  advanced failsafe support for rover
+ */
 
-#include "ToshibaLED.h"
+#if ADVANCED_FAILSAFE == ENABLED
+#include <AP_AdvancedFailsafe/AP_AdvancedFailsafe.h>
 
-class ToshibaLED_PX4 : public ToshibaLED
+/*
+  a rover specific AP_AdvancedFailsafe class
+ */
+class AP_AdvancedFailsafe_Rover : public AP_AdvancedFailsafe
 {
 public:
-    bool hw_init(void);
-    bool hw_set_rgb(uint8_t r, uint8_t g, uint8_t b);
-private:
-    int _rgbled_fd;
-    void update_timer(void);
+    AP_AdvancedFailsafe_Rover(AP_Mission &_mission, AP_Baro &_baro, const AP_GPS &_gps, const RCMapper &_rcmap);
 
-    // use a union so that updates can be of a single 32 bit value,
-    // making it atomic on PX4
-    union rgb_value {
-        struct {
-            uint8_t r;
-            uint8_t g;
-            uint8_t b;
-        };
-        volatile uint32_t v;
-    };
-    
-    union rgb_value last, next;
+    // called to set all outputs to termination state
+    void terminate_vehicle(void);
+
+protected:
+    // setup failsafe values for if FMU firmware stops running
+    void setup_IO_failsafe(void);
+
+    // return the AFS mapped control mode
+    enum control_mode afs_mode(void);
 };
+
+#endif  // ADVANCED_FAILSAFE

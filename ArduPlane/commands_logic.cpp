@@ -13,8 +13,6 @@ bool Plane::start_command(const AP_Mission::Mission_Command& cmd)
         DataFlash.Log_Write_Mission_Cmd(mission, cmd);
     }
 
-    landing.reset();
-
     // special handling for nav vs non-nav commands
     if (AP_Mission::is_nav_cmd(cmd)) {
         // set land_complete to false to stop us zeroing the throttle
@@ -138,7 +136,6 @@ bool Plane::start_command(const AP_Mission::Mission_Command& cmd)
         break;
 
     case MAV_CMD_DO_LAND_START:
-        // handled in landing.reset()
         break;
 
     case MAV_CMD_DO_FENCE_ENABLE:
@@ -247,12 +244,14 @@ bool Plane::verify_command(const AP_Mission::Mission_Command& cmd)        // Ret
         return verify_nav_wp(cmd);
 
     case MAV_CMD_NAV_LAND:
-        {
-        // use rangefinder to correct if possible
-        float height = height_above_target() - rangefinder_correction();
+        if (flight_stage == AP_Vehicle::FixedWing::FlightStage::FLIGHT_ABORT_LAND) {
+            return landing.verify_abort_landing(prev_WP_loc, next_WP_loc, current_loc, auto_state.takeoff_altitude_rel_cm, throttle_suppressed);
 
-        return landing.verify_land(flight_stage, prev_WP_loc, next_WP_loc, current_loc,
-                auto_state.takeoff_altitude_rel_cm, height, auto_state.sink_rate, auto_state.wp_proportion, auto_state.last_flying_ms, arming.is_armed(), is_flying(), rangefinder_state.in_range, throttle_suppressed);
+        } else {
+            // use rangefinder to correct if possible
+            const float height = height_above_target() - rangefinder_correction();
+            return landing.verify_land(prev_WP_loc, next_WP_loc, current_loc,
+                height, auto_state.sink_rate, auto_state.wp_proportion, auto_state.last_flying_ms, arming.is_armed(), is_flying(), rangefinder_state.in_range);
         }
 
     case MAV_CMD_NAV_LOITER_UNLIM:
@@ -338,7 +337,7 @@ void Plane::do_RTL(int32_t rtl_altitude)
     setup_terrain_target_alt(next_WP_loc);
     set_target_altitude_location(next_WP_loc);
 
-    if (g.loiter_radius < 0) {
+    if (aparm.loiter_radius < 0) {
         loiter.direction = -1;
     } else {
         loiter.direction = 1;
@@ -399,6 +398,24 @@ void Plane::do_land(const AP_Mission::Mission_Command& cmd)
 
     // zero rangefinder state, start to accumulate good samples now
     memset(&rangefinder_state, 0, sizeof(rangefinder_state));
+
+    landing.do_land(cmd, relative_altitude());
+
+#if GEOFENCE_ENABLED == ENABLED 
+    if (g.fence_autoenable == 1) {
+        if (! geofence_set_enabled(false, AUTO_TOGGLED)) {
+            gcs_send_text(MAV_SEVERITY_NOTICE, "Disable fence failed (autodisable)");
+        } else {
+            gcs_send_text(MAV_SEVERITY_NOTICE, "Fence disabled (autodisable)");
+        }
+    } else if (g.fence_autoenable == 2) {
+        if (! geofence_set_floor_enabled(false)) {
+            gcs_send_text(MAV_SEVERITY_NOTICE, "Disable fence floor failed (autodisable)");
+        } else {
+            gcs_send_text(MAV_SEVERITY_NOTICE, "Fence floor disabled (auto disable)");
+        }
+    }
+#endif
 }
 
 void Plane::loiter_set_direction_wp(const AP_Mission::Mission_Command& cmd)
@@ -636,7 +653,7 @@ bool Plane::verify_loiter_unlim()
 bool Plane::verify_loiter_time()
 {
     bool result = false;
-    // mission radius is always g.loiter_radius
+    // mission radius is always aparm.loiter_radius
     update_loiter(0);
 
     if (loiter.start_time_ms == 0) {
@@ -844,7 +861,7 @@ bool Plane::verify_within_distance()
 
 void Plane::do_loiter_at_location()
 {
-    if (g.loiter_radius < 0) {
+    if (aparm.loiter_radius < 0) {
         loiter.direction = -1;
     } else {
         loiter.direction = 1;
@@ -1014,7 +1031,7 @@ bool Plane::verify_loiter_heading(bool init)
         return true;
     }
 
-    if (get_distance(next_WP_loc, next_nav_cmd.content.location) < labs(g.loiter_radius)) {
+    if (get_distance(next_WP_loc, next_nav_cmd.content.location) < abs(aparm.loiter_radius)) {
         /* Whenever next waypoint is within the loiter radius,
            maintaining loiter would prevent us from ever pointing toward the next waypoint.
            Hence break out of loiter immediately

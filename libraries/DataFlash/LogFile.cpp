@@ -119,14 +119,14 @@ uint16_t DataFlash_Block::start_new_log(void)
     uint16_t last_page = find_last_page();
 
     StartRead(last_page);
-    //Serial.print("last page: "); Serial.println(last_page);
-    //Serial.print("file #: ");    Serial.println(GetFileNumber());
-    //Serial.print("file page: "); Serial.println(GetFilePage());
+    //Serial.printf("last page: "); Serial.printf("%u\n", last_page);
+    //Serial.printf("file #: ");    Serial.printf("%u\n", GetFileNumber());
+    //Serial.printf("file page: "); Serial.printf("%u\n", GetFilePage());
 
     if(find_last_log() == 0 || GetFileNumber() == 0xFFFF) {
         SetFileNumber(1);
         StartWrite(1);
-        //Serial.println("start log from 0");
+        //Serial.printf("start log from 0\n");
         log_write_started = true;
         return 1;
     }
@@ -497,7 +497,7 @@ void DataFlash_Backend::_print_log_entry(uint8_t msg_type,
             port->printf(", ");
         }
     }
-    port->println();
+    port->printf("\n");
 }
 
 /*
@@ -594,7 +594,7 @@ void DataFlash_Block::DumpPageInfo(AP_HAL::BetterStream *port)
 void DataFlash_Block::ShowDeviceInfo(AP_HAL::BetterStream *port)
 {
     if (!CardInserted()) {
-        port->println("No dataflash inserted");
+        port->printf("No dataflash inserted\n");
         return;
     }
     ReadManufacturerID();
@@ -635,7 +635,7 @@ void DataFlash_Block::ListAvailableLogs(AP_HAL::BetterStream *port)
             break;
         }
     }
-    port->println();
+    port->printf("\n");
 }
 
 // This function starts a new log file in the DataFlash, and writes
@@ -1420,7 +1420,10 @@ void DataFlash_Class::Log_Write_EKF2(AP_AHRS_NavEKF &ahrs, bool optFlowEnabled)
                     beaconPosE : (int16_t)(100*beaconPosNED.y),
                     beaconPosD : (int16_t)(100*beaconPosNED.z),
                     offsetHigh : (int16_t)(100*bcnPosOffsetHigh),
-                    offsetLow : (int16_t)(100*bcnPosOffsetLow)
+                    offsetLow : (int16_t)(100*bcnPosOffsetLow),
+                    posN : 0,
+                    posE : 0,
+                    posD : 0
                 };
                 WriteBlock(&pkt10, sizeof(pkt10));
             }
@@ -1695,7 +1698,8 @@ void DataFlash_Class::Log_Write_EKF3(AP_AHRS_NavEKF &ahrs, bool optFlowEnabled)
     Vector3f beaconPosNED;
     float bcnPosOffsetHigh;
     float bcnPosOffsetLow;
-     if (ahrs.get_NavEKF3().getRangeBeaconDebug(-1, ID, rng, innov, innovVar, testRatio, beaconPosNED, bcnPosOffsetHigh, bcnPosOffsetLow)) {
+    Vector3f posNED;
+     if (ahrs.get_NavEKF3().getRangeBeaconDebug(-1, ID, rng, innov, innovVar, testRatio, beaconPosNED, bcnPosOffsetHigh, bcnPosOffsetLow, posNED)) {
         if (rng > 0.0f) {
             struct log_RngBcnDebug pkt10 = {
                 LOG_PACKET_HEADER_INIT(LOG_XKF10_MSG),
@@ -1709,7 +1713,11 @@ void DataFlash_Class::Log_Write_EKF3(AP_AHRS_NavEKF &ahrs, bool optFlowEnabled)
                 beaconPosE : (int16_t)(100*beaconPosNED.y),
                 beaconPosD : (int16_t)(100*beaconPosNED.z),
                 offsetHigh : (int16_t)(100*bcnPosOffsetHigh),
-                offsetLow : (int16_t)(100*bcnPosOffsetLow)
+                offsetLow : (int16_t)(100*bcnPosOffsetLow),
+                posN : (int16_t)(100*posNED.x),
+                posE : (int16_t)(100*posNED.y),
+                posD : (int16_t)(100*posNED.z)
+
              };
             WriteBlock(&pkt10, sizeof(pkt10));
         }
