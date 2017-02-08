@@ -31,6 +31,10 @@
 class AuxiliaryBus;
 class DataFlash_Class;
 
+// AB ZhaoYJ@2016-11-30 for user-defined 4 order chebyI filter
+#define USER_FILTER 1
+#define N_ORDER 4
+
 class AP_InertialSensor_Backend
 {
 public:
@@ -195,4 +199,11 @@ protected:
     // note that each backend is also expected to have a static detect()
     // function which instantiates an instance of the backend sensor
     // driver if the sensor is available
+    //
+#if USER_FILTER 
+    Vector3f _accel_user_filter(Vector3f _accl_in, uint8_t _uf);
+    Vector3f _gyro_user_filter(Vector3f _gyro_in, uint8_t _uf);
+    Vector3f _accel_median_filter(Vector3f _accl_in);
+    Vector3f _gyro_median_filter(Vector3f _gyro_in);
+#endif
 };

@@ -40,7 +40,8 @@ extern const AP_HAL::HAL& hal;
 #endif
 #endif
 
-#define debug(fmt, args ...)  do {printf("MPU: " fmt "\n", ## args); } while(0)
+#define debug(fmt, args ...)  do {printf("ICM: " fmt "\n", ## args); } while(0)
+
 
 /*
   EXT_SYNC allows for frame synchronisation with an external device
@@ -782,6 +783,7 @@ void AP_InertialSensor_Invensense::_set_filter_register(void)
         _fast_sampling = (_mpu_type != Invensense_MPU6000 && _dev->bus_type() == AP_HAL::Device::BUS_TYPE_SPI);
         if (_fast_sampling) {
             hal.console->printf("MPU[%u]: enabled fast sampling\n", _accel_instance);
+            // hal.util->prt("ICM[%u]: enabled fast sampling\n", _accel_instance);
         }
     }
     
@@ -1076,3 +1078,4 @@ int AP_Invensense_AuxiliaryBus::_configure_periodic_read(AuxiliaryBusSlave *slav
 
     return 0;
 }
+

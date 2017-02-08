@@ -427,6 +427,37 @@ const AP_Param::GroupInfo AP_InertialSensor::var_info[] = {
       NOTE: parameter indexes have gaps above. When adding new
       parameters check for conflicts carefully
      */
+
+    // @Param: ACC_UF 
+    // @DisplayName: accl user defined filter
+    // @Description: User defined filter
+    // @Values: 0:original,1:CI-10Hz
+    // @User: Advanced
+    AP_GROUPINFO("ACC_UF", 37, AP_InertialSensor, _accl_user_filter[0],  33),
+
+    // @Param: GYRO_USER_FILTER 
+    // @DisplayName: 
+    // @Description: User defined filter
+    // @Values: 0:original,1:CI-10Hz
+    // @User: Advanced
+    AP_GROUPINFO("GYRO_UF", 38, AP_InertialSensor, _gyro_user_filter[0],  40),
+
+    // @Param: ACC_MED_TAP
+    //
+    // @DisplayName: 
+    // @Description: accl mean filter former num
+    // @Values: 
+    // @User: Advanced
+    AP_GROUPINFO("ACC_MED_TAP", 39, AP_InertialSensor, _med_tap_acc[0],  14),
+
+    // @Param: GYRO_MED_TAP
+    //
+    // @DisplayName: 
+    // @Description: gyro mean filter former num
+    // @Values: 
+    // @User: Advanced
+    AP_GROUPINFO("GYRO_MED_TAP", 40, AP_InertialSensor, _med_tap_gyro[0],  14),
+
     AP_GROUPEND
 };
 
@@ -743,6 +774,7 @@ AP_InertialSensor::detect_backends(void)
 #elif HAL_INS_DEFAULT == HAL_INS_MPU9250_SPI && defined(HAL_INS_DEFAULT_ROTATION)
     _add_backend(AP_InertialSensor_Invensense::probe(*this, hal.spi->get_device(HAL_INS_MPU9250_NAME), HAL_INS_DEFAULT_ROTATION));
 #elif HAL_INS_DEFAULT == HAL_INS_ICM20689_SPI && defined(HAL_INS_DEFAULT_ROTATION)
+    _fast_sampling_mask.set_default(1);
     _add_backend(AP_InertialSensor_Invensense::probe(*this, hal.spi->get_device(HAL_INS_ICM20689_NAME), HAL_INS_DEFAULT_ROTATION));
 #elif HAL_INS_DEFAULT == HAL_INS_MPU9250_SPI
     _add_backend(AP_InertialSensor_Invensense::probe(*this, hal.spi->get_device(HAL_INS_MPU9250_NAME)));

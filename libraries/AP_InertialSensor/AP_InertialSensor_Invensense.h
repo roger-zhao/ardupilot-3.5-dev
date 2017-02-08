@@ -22,6 +22,10 @@
 #include "AP_InertialSensor_Backend.h"
 #include "AuxiliaryBus.h"
 
+// enable debug to see a register dump on startup
+#define ICM20689_DEBUG 0
+
+
 class AP_Invensense_AuxiliaryBus;
 class AP_Invensense_AuxiliaryBusSlave;
 
@@ -63,6 +67,7 @@ public:
         Invensense_ICM20689,
     };
     
+
 private:
     AP_InertialSensor_Invensense(AP_InertialSensor &imu,
                               AP_HAL::OwnPtr<AP_HAL::Device> dev,

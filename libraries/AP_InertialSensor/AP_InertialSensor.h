@@ -197,6 +197,12 @@ public:
     // get the accel filter rate in Hz
     uint8_t get_accel_filter_hz(void) const { return _accel_filter_cutoff; }
 
+    // get ddd gyro filter rate in Hz
+    uint8_t get_accl_user_filter(void) const { return _accl_user_filter[0]; }
+    uint8_t get_gyro_user_filter(void) const { return _gyro_user_filter[0]; }
+    uint8_t get_med_tap_acc(void) const { return _med_tap_acc[0]; }
+    uint8_t get_med_tap_gyro(void) const { return _med_tap_gyro[0]; }
+
     // pass in a pointer to DataFlash for raw data logging
     void set_dataflash(DataFlash_Class *dataflash) { _dataflash = dataflash; }
 
@@ -351,6 +357,12 @@ private:
 
     // use for attitude, velocity, position estimates
     AP_Int8     _use[INS_MAX_INSTANCES];
+
+    // AB ZhaoYJ@2016-12-04 for user filter
+    AP_Int8 _accl_user_filter[INS_MAX_INSTANCES];
+    AP_Int8 _gyro_user_filter[INS_MAX_INSTANCES];
+    AP_Int8 _med_tap_acc[INS_MAX_INSTANCES];
+    AP_Int8 _med_tap_gyro[INS_MAX_INSTANCES];
 
     // control enable of fast sampling
     AP_Int8     _fast_sampling_mask;
