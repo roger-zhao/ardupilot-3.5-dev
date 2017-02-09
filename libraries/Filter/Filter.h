@@ -4,6 +4,7 @@
 
 #include "FilterClass.h"
 #include "AverageFilter.h"
+#include "UserFilter.h"
 #include "DerivativeFilter.h"
 #include "FilterWithBuffer.h"
 #include "LowPassFilter.h"
