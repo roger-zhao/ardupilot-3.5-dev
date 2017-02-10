@@ -21,11 +21,14 @@
 
 #include "FilterClass.h"
 #include "FilterWithBuffer.h"
+#include <AP_HAL/AP_HAL.h>
+#include <AP_Math/AP_Math.h>
+
 
 // 1st parameter <T> is the type of data being filtered.
 // 2nd parameter <FILTER_SIZE> is the number of elements in the filter
 template <class T, uint8_t FILTER_SIZE>
-class UserFilter : public FilterWithBuffer<T,FILTER_SIZE>
+class UserFilter //  : public FilterWithBuffer<T,FILTER_SIZE>
 {
 public:
     enum filter_t{
@@ -36,7 +39,7 @@ public:
     };
 
     enum freq_t{
-        freq_5Hz = 0,
+        freq_5Hz = 1,
         freq_10Hz,
         freq_15Hz,
         freq_20Hz,
@@ -52,15 +55,33 @@ public:
     };
 
     // constructor
-    UserFilter(filter_t ft, freq_t cutoff) : FilterWithBuffer<T,FILTER_SIZE>() {
+    UserFilter() {}; // : FilterWithBuffer<T,FILTER_SIZE>(); 
+    UserFilter(uint8_t ft, uint16_t cutoff) {
+
         reset();
-        init(ft, cutoff);
-    };
+        freq_t fr_t = (freq_t) (cutoff/(uint16_t)5);
+        // check cutoff freq is valid
+        if((0 != cutoff%5) || (cutoff < 5) || (cutoff > 60))
+        {
+            // hal.util->prt("[Warn] UserFilter: invalid cutoff freq!");
+            if(cutoff < 5)
+            {
+                fr_t = freq_5Hz;        
+            }
+            else if(cutoff > 60)
+            {
+                fr_t = freq_60Hz;        
+            }
+        }
+        init((filter_t) ft, fr_t);
+    }; // : FilterWithBuffer<T,FILTER_SIZE>(); 
 
     // update - Add a new raw value to the filter, but don't recalculate
     void update(T sample, uint32_t timestamp);
 
     T apply(T sample);
+
+    Vector3f apply3d(Vector3f sample);
 
 
     // init coeffs
@@ -71,12 +92,20 @@ public:
 
 private:
     bool            _new_data;
-    T               b[FILTER_SIZE];
-    T               a[FILTER_SIZE];
+    bool            _first;
+    double          *b;
+    double          *a;
+
+    T               filter_state[FILTER_SIZE];
+    T               filter_out[FILTER_SIZE];
+
+    uint16_t        _sample_idx;
+
+    Vector3d        filter_state_3d[FILTER_SIZE];
+    Vector3d        filter_out_3d[FILTER_SIZE];
 
     // microsecond timestamps for samples. This is needed
     // to cope with non-uniform time spacing of the data
-    uint32_t        _timestamps[FILTER_SIZE];
 };
 
 typedef UserFilter<float,3> UserFilterFloat_Size3;

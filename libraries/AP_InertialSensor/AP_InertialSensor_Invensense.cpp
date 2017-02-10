@@ -274,13 +274,15 @@ static const float GYRO_SCALE = (0.0174532f / 16.4f);
  */
 
 AP_InertialSensor_Invensense::AP_InertialSensor_Invensense(AP_InertialSensor &imu,
-                                                           AP_HAL::OwnPtr<AP_HAL::Device> dev,
-                                                           enum Rotation rotation)
+                                                           AP_HAL::OwnPtr<AP_HAL::Device> dev, enum Rotation rotation)
     : AP_InertialSensor_Backend(imu)
     , _temp_filter(1000, 1)
     , _rotation(rotation)
+    , _accel_uf(nullptr)
+    , _gyro_uf(nullptr)
     , _dev(std::move(dev))
 {
+
 }
 
 AP_InertialSensor_Invensense::~AP_InertialSensor_Invensense()
@@ -656,6 +658,21 @@ void AP_InertialSensor_Invensense::_read_fifo()
     uint16_t bytes_read;
     uint8_t *rx = _fifo_buffer;
     bool need_reset = false;
+
+#if USER_FILTERE_EN  == 1
+    static bool first = true;
+    if(first)
+    {
+        first = false;
+        uint16_t filter_info = _imu.get_accl_user_filter(); 
+        uint16_t ft = (filter_info & 0x7)%0x5; // convert to filter_type: 0 - chebyI, 1, chebyII, 2 - elliptic 
+        _accel_uf = new UserFilterDouble_Size5((uint8_t)ft, (uint16_t)(filter_info - ft));
+        // _accel_uf = new UserFilterDouble_Size5();
+        // filter_info = _imu.get_gyro_user_filter(); 
+        // ft = (filter_info & 0x7)%0x5; // convert to filter_type: 0 - chebyI, 1, chebyII, 2 - elliptic 
+        // _gyro_uf = new UserFilterDouble_Size5(ft, (filter_info - ft));
+    }
+#endif
 
     if (!_block_read(MPUREG_FIFO_COUNTH, rx, 2)) {
         goto check_registers;

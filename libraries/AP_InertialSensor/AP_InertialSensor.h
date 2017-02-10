@@ -359,8 +359,8 @@ private:
     AP_Int8     _use[INS_MAX_INSTANCES];
 
     // AB ZhaoYJ@2016-12-04 for user filter
-    AP_Int8 _accl_user_filter[INS_MAX_INSTANCES];
-    AP_Int8 _gyro_user_filter[INS_MAX_INSTANCES];
+    AP_Int16 _accl_user_filter[INS_MAX_INSTANCES];
+    AP_Int16 _gyro_user_filter[INS_MAX_INSTANCES];
     AP_Int8 _med_tap_acc[INS_MAX_INSTANCES];
     AP_Int8 _med_tap_gyro[INS_MAX_INSTANCES];
 

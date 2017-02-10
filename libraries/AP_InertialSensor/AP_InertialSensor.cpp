@@ -433,14 +433,14 @@ const AP_Param::GroupInfo AP_InertialSensor::var_info[] = {
     // @Description: User defined filter
     // @Values: 0:original,1:CI-10Hz
     // @User: Advanced
-    AP_GROUPINFO("ACC_UF", 37, AP_InertialSensor, _accl_user_filter[0],  33),
+    AP_GROUPINFO("ACC_UF", 37, AP_InertialSensor, _accl_user_filter[0],  21),
 
     // @Param: GYRO_USER_FILTER 
     // @DisplayName: 
     // @Description: User defined filter
     // @Values: 0:original,1:CI-10Hz
     // @User: Advanced
-    AP_GROUPINFO("GYRO_UF", 38, AP_InertialSensor, _gyro_user_filter[0],  40),
+    AP_GROUPINFO("GYRO_UF", 38, AP_InertialSensor, _gyro_user_filter[0],  31),
 
     // @Param: ACC_MED_TAP
     //
