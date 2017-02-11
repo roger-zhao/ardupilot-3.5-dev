@@ -39,7 +39,7 @@ public:
     };
 
     enum freq_t{
-        freq_5Hz = 1,
+        freq_5Hz = 0,
         freq_10Hz,
         freq_15Hz,
         freq_20Hz,
@@ -51,6 +51,8 @@ public:
         freq_50Hz,
         freq_55Hz,
         freq_60Hz,
+        freq_188Hz,
+        freq_200Hz,
         freq_num 
     };
 
@@ -59,18 +61,22 @@ public:
     UserFilter(uint8_t ft, uint16_t cutoff) {
 
         reset();
-        freq_t fr_t = (freq_t) (cutoff/(uint16_t)5);
+        freq_t fr_t = (freq_t) (cutoff/(uint16_t)5 - 1);
         // check cutoff freq is valid
-        if((0 != cutoff%5) || (cutoff < 5) || (cutoff > 60))
+        if((0 != cutoff%5) || (cutoff < 5) || (cutoff > 200))
         {
             // hal.util->prt("[Warn] UserFilter: invalid cutoff freq!");
             if(cutoff < 5)
             {
                 fr_t = freq_5Hz;        
             }
-            else if(cutoff > 60)
+            else if(cutoff == 188)
             {
-                fr_t = freq_60Hz;        
+                fr_t = freq_188Hz;
+            }
+            else if(cutoff >= 200)
+            {
+                fr_t = freq_200Hz;        
             }
         }
         init((filter_t) ft, fr_t);

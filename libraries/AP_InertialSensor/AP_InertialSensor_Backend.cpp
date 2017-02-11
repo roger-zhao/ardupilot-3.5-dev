@@ -7,8 +7,6 @@
 // AB ZhaoYJ@2016-11-30 for user-defined 4 order chebyII filter
 #define FILTER_TYPE 15 // 7 filters, 4 order with b & a
 
-#define SAMPLE_RATE 1000 // AC3.4+ 1000Hz
-// #define SAMPLE_RATE 400 // AC3.4- 400Hz
 #define ELLIPTIC_80DB 1
 
 #define CHK_FT_TAP 0
@@ -895,7 +893,7 @@ Vector3f AP_InertialSensor_Backend::_gyro_user_filter(Vector3f _gyro_in, uint8_t
     {
         if(_uf >= FILTER_TYPE) 
         {
-            hal.util->prt("[Err] gyro filter type wrong: %d", _uf);
+            // hal.util->prt("[Err] gyro filter type wrong: %d", _uf);
             return ret;
         }
 

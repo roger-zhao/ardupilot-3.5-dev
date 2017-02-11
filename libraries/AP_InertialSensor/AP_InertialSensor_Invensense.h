@@ -25,7 +25,6 @@
 // enable debug to see a register dump on startup
 #define ICM20689_DEBUG 0
 
-#define USER_FILTERE_EN 1
 
 class AP_Invensense_AuxiliaryBus;
 class AP_Invensense_AuxiliaryBusSlave;
@@ -145,7 +144,7 @@ private:
         LowPassFilterVector3f gyro_filter{8000, 188};
     } _accum;
 
-#if USER_FILTERE_EN  == 1
+#if USER_FILTER_8KHZ == 1
     UserFilterDouble_Size5 *_accel_uf;
     UserFilterDouble_Size5 *_gyro_uf;
 #endif

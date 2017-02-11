@@ -47,6 +47,16 @@
 #define KEEP_ALIVE_TIME_OUT_HOST 50 // second 
 #define KEEP_ALIVE_TIME_OUT_PRU 75 // 75*20ms
 
+// AB ZhaoYJ@2017-02-11 for 8KHz filter & 1KHz filter
+// for 8KHz uf (common class in userfilter.cpp)
+#define USER_SAMPLE_RATE 8000 // userfilter.cpp
+#define USER_FILTER_8KHZ 0 // inversense.cpp
+
+// for 1KHz uf
+#define USER_FILTER 1
+#define SAMPLE_RATE 1000 // AC3.4+ 1000Hz uf _backend.cpp
+// #define SAMPLE_RATE 400 // AC3.4- 400Hz
+
 #elif CONFIG_HAL_BOARD_SUBTYPE == HAL_BOARD_SUBTYPE_LINUX_BEBOP
 #define HAL_BOARD_LOG_DIRECTORY "/data/ftp/internal_000/ardupilot/logs"
 #define HAL_BOARD_TERRAIN_DIRECTORY "/data/ftp/internal_000/ardupilot/terrain"

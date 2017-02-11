@@ -32,7 +32,6 @@ class AuxiliaryBus;
 class DataFlash_Class;
 
 // AB ZhaoYJ@2016-11-30 for user-defined 4 order chebyI filter
-#define USER_FILTER 1
 #define N_ORDER 4
 
 class AP_InertialSensor_Backend

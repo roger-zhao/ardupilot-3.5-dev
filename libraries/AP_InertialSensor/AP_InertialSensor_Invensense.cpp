@@ -278,8 +278,10 @@ AP_InertialSensor_Invensense::AP_InertialSensor_Invensense(AP_InertialSensor &im
     : AP_InertialSensor_Backend(imu)
     , _temp_filter(1000, 1)
     , _rotation(rotation)
+#if USER_FILTER_8KHZ
     , _accel_uf(nullptr)
     , _gyro_uf(nullptr)
+#endif
     , _dev(std::move(dev))
 {
 
@@ -611,14 +613,24 @@ bool AP_InertialSensor_Invensense::_accumulate_fast_sampling(uint8_t *samples, u
                 fabsf(a.z) > clip_limit) {
                 clipped = true;
             }
+#if USER_FILTER_8KHZ
+            _accum.accel += _accel_uf->apply3d(a);
+#else
             _accum.accel += _accum.accel_filter.apply(a);
+#endif
         }
 
         Vector3f g(int16_val(data, 5),
                    int16_val(data, 4),
                    -int16_val(data, 6));
 
+#if USER_FILTER_8KHZ
+        _accum.gyro += _gyro_uf->apply3d(g);
+#else
         _accum.gyro += _accum.gyro_filter.apply(g);
+#endif
+
+        // tmp2 = tmp2;
         _accum.count++;
 
         if (_accum.count == MPU_FIFO_DOWNSAMPLE_COUNT) {
@@ -659,18 +671,41 @@ void AP_InertialSensor_Invensense::_read_fifo()
     uint8_t *rx = _fifo_buffer;
     bool need_reset = false;
 
-#if USER_FILTERE_EN  == 1
+#if USER_FILTER_8KHZ == 1
     static bool first = true;
     if(first)
     {
         first = false;
-        uint16_t filter_info = _imu.get_accl_user_filter(); 
-        uint16_t ft = (filter_info & 0x7)%0x5; // convert to filter_type: 0 - chebyI, 1, chebyII, 2 - elliptic 
-        _accel_uf = new UserFilterDouble_Size5((uint8_t)ft, (uint16_t)(filter_info - ft));
-        // _accel_uf = new UserFilterDouble_Size5();
-        // filter_info = _imu.get_gyro_user_filter(); 
-        // ft = (filter_info & 0x7)%0x5; // convert to filter_type: 0 - chebyI, 1, chebyII, 2 - elliptic 
-        // _gyro_uf = new UserFilterDouble_Size5(ft, (filter_info - ft));
+        uint16_t filter_info = _imu.get_accl_user_filter_8KHz(); 
+        uint16_t ft = (filter_info%10)%5; // convert to filter_type: 0 - chebyI, 1, chebyII, 2 - elliptic 
+        uint16_t cutoff = (uint16_t)(filter_info - ft);
+        if((filter_info >= 188) && (filter_info < 200))
+        {
+            cutoff = 188;
+            ft = filter_info - 188;
+        }
+        else if(filter_info >= 200)
+        {
+            cutoff = 200;
+            ft = filter_info - 200;
+        }
+        hal.util->prt("[Info] InvSense: accel filter_info %d, ft: %d, cutoff: %d", filter_info, (uint8_t)ft, cutoff);
+        _accel_uf = new UserFilterDouble_Size5((uint8_t)ft, cutoff);
+        filter_info = _imu.get_gyro_user_filter_8KHz(); 
+        ft = (filter_info%10)%5; // convert to filter_type: 0 - chebyI, 1, chebyII, 2 - elliptic 
+        cutoff = (uint16_t)(filter_info - ft);
+        if((filter_info >= 188) && (filter_info < 200))
+        {
+            cutoff = 188;
+            ft = filter_info - 188;
+        }
+        else if(filter_info >= 200)
+        {
+            cutoff = 200;
+            ft = filter_info - 200;
+        }
+        _gyro_uf = new UserFilterDouble_Size5((uint8_t)ft, cutoff);
+        hal.util->prt("[Info] InvSense: gyro filter_info %d, ft: %d, cutoff: %d", filter_info, (uint8_t)ft, cutoff);
     }
 #endif
 

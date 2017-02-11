@@ -433,14 +433,28 @@ const AP_Param::GroupInfo AP_InertialSensor::var_info[] = {
     // @Description: User defined filter
     // @Values: 0:original,1:CI-10Hz
     // @User: Advanced
-    AP_GROUPINFO("ACC_UF", 37, AP_InertialSensor, _accl_user_filter[0],  21),
+    AP_GROUPINFO("ACC_UF", 37, AP_InertialSensor, _accl_user_filter[0],  33),
 
     // @Param: GYRO_USER_FILTER 
     // @DisplayName: 
     // @Description: User defined filter
     // @Values: 0:original,1:CI-10Hz
     // @User: Advanced
-    AP_GROUPINFO("GYRO_UF", 38, AP_InertialSensor, _gyro_user_filter[0],  31),
+    AP_GROUPINFO("GYRO_UF", 38, AP_InertialSensor, _gyro_user_filter[0],  34),
+
+    // @Param: ACC_UF 
+    // @DisplayName: accl user defined filter
+    // @Description: User defined filter
+    // @Values: 0:original,1:CI-10Hz
+    // @User: Advanced
+    AP_GROUPINFO("ACC_UF_8", 39, AP_InertialSensor, _accl_user_filter_8KHz[0],  21),
+
+    // @Param: GYRO_USER_FILTER 
+    // @DisplayName: 
+    // @Description: User defined filter
+    // @Values: 0:original,1:CI-10Hz
+    // @User: Advanced
+    AP_GROUPINFO("GYRO_UF_8", 40, AP_InertialSensor, _gyro_user_filter_8KHz[0],  31),
 
     // @Param: ACC_MED_TAP
     //
@@ -448,7 +462,7 @@ const AP_Param::GroupInfo AP_InertialSensor::var_info[] = {
     // @Description: accl mean filter former num
     // @Values: 
     // @User: Advanced
-    AP_GROUPINFO("ACC_MED_TAP", 39, AP_InertialSensor, _med_tap_acc[0],  14),
+    AP_GROUPINFO("ACC_MED_TAP", 41, AP_InertialSensor, _med_tap_acc[0],  14),
 
     // @Param: GYRO_MED_TAP
     //
@@ -456,7 +470,7 @@ const AP_Param::GroupInfo AP_InertialSensor::var_info[] = {
     // @Description: gyro mean filter former num
     // @Values: 
     // @User: Advanced
-    AP_GROUPINFO("GYRO_MED_TAP", 40, AP_InertialSensor, _med_tap_gyro[0],  14),
+    AP_GROUPINFO("GYRO_MED_TAP", 42, AP_InertialSensor, _med_tap_gyro[0],  14),
 
     AP_GROUPEND
 };
