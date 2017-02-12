@@ -50,7 +50,7 @@
 // AB ZhaoYJ@2017-02-11 for 8KHz filter & 1KHz filter
 // for 8KHz uf (common class in userfilter.cpp)
 #define USER_SAMPLE_RATE 8000 // userfilter.cpp
-#define USER_FILTER_8KHZ 0 // inversense.cpp
+#define USER_FILTER_8KHZ 1 // inversense.cpp
 
 // for 1KHz uf
 #define USER_FILTER 1

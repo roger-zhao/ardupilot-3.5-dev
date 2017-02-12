@@ -31,6 +31,15 @@ template <class T, uint8_t FILTER_SIZE>
 class UserFilter //  : public FilterWithBuffer<T,FILTER_SIZE>
 {
 public:
+    enum sample_rate {
+        sample_rate_400Hz = 0,
+        sample_rate_1KHz,
+        sample_rate_2KHz,
+        sample_rate_4KHz,
+        sample_rate_8KHz,
+        sample_rate_num
+    };
+
     enum filter_t{
         ft_chebyI = 0,
         ft_chebyII,
@@ -58,7 +67,8 @@ public:
 
     // constructor
     UserFilter() {}; // : FilterWithBuffer<T,FILTER_SIZE>(); 
-    UserFilter(uint8_t ft, uint16_t cutoff) {
+    // TODO: fs will be needed for future
+    UserFilter(sample_rate fs, uint8_t ft, uint16_t cutoff) {
 
         reset();
         freq_t fr_t = (freq_t) (cutoff/(uint16_t)5 - 1);

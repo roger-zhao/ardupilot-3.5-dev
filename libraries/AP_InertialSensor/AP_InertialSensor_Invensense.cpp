@@ -678,7 +678,10 @@ void AP_InertialSensor_Invensense::_read_fifo()
         first = false;
         uint16_t filter_info = _imu.get_accl_user_filter_8KHz(); 
         uint16_t ft = (filter_info%10)%5; // convert to filter_type: 0 - chebyI, 1, chebyII, 2 - elliptic 
-        uint16_t cutoff = (uint16_t)(filter_info - ft);
+        uint16_t cutoff = (uint16_t)(filter_info - ft)*2; // for accel, it's 4KHz, but in userfilter, there're just 8KHz coeff, so need convert
+
+        // then, for accel, max cutoff is 94Hz~100Hz
+        // TODO: this logic is messed up, so clean it when time available
         if((filter_info >= 188) && (filter_info < 200))
         {
             cutoff = 188;
@@ -690,7 +693,7 @@ void AP_InertialSensor_Invensense::_read_fifo()
             ft = filter_info - 200;
         }
         hal.util->prt("[Info] InvSense: accel filter_info %d, ft: %d, cutoff: %d", filter_info, (uint8_t)ft, cutoff);
-        _accel_uf = new UserFilterDouble_Size5((uint8_t)ft, cutoff);
+        _accel_uf = new UserFilterDouble_Size5(UserFilterDouble_Size5::sample_rate_4KHz, (uint8_t)ft, cutoff); 
         filter_info = _imu.get_gyro_user_filter_8KHz(); 
         ft = (filter_info%10)%5; // convert to filter_type: 0 - chebyI, 1, chebyII, 2 - elliptic 
         cutoff = (uint16_t)(filter_info - ft);
@@ -704,7 +707,7 @@ void AP_InertialSensor_Invensense::_read_fifo()
             cutoff = 200;
             ft = filter_info - 200;
         }
-        _gyro_uf = new UserFilterDouble_Size5((uint8_t)ft, cutoff);
+        _gyro_uf = new UserFilterDouble_Size5(UserFilterDouble_Size5::sample_rate_8KHz, (uint8_t)ft, cutoff);
         hal.util->prt("[Info] InvSense: gyro filter_info %d, ft: %d, cutoff: %d", filter_info, (uint8_t)ft, cutoff);
     }
 #endif
