@@ -256,13 +256,13 @@ Vector3f UserFilter<T,FILTER_SIZE>::apply3d(Vector3f sample)
                 b[0], b[1], b[2], b[3], b[4]);
         hal.util->prt("filter a: %.19f, %.19f, %.19f, %.19f, %.19f", 
                 a[0], a[1], a[2], a[3], a[4]);
-#if 0
         hal.util->prt("ChebyII filter idx: curr_idx %d, %d, %d, %d, %d", 
                 curr_idx,
-                FORMER(curr_idx, 1, FILTER_MAX_TAP), 
-                FORMER(curr_idx, 2, FILTER_MAX_TAP), 
-                FORMER(curr_idx, 3, FILTER_MAX_TAP), 
-                FORMER(curr_idx, 4, FILTER_MAX_TAP)); 
+                FORMER(curr_idx, 1, FILTER_SIZE), 
+                FORMER(curr_idx, 2, FILTER_SIZE), 
+                FORMER(curr_idx, 3, FILTER_SIZE), 
+                FORMER(curr_idx, 4, FILTER_SIZE)); 
+#if 0
         uint8_t med_f_len = _imu.get_mean_filter_former() + _imu.get_mean_filter_latter();
         hal.util->prt("Median filter idx: len: %d, curr_idx %d", med_f_len, curr_idx);
             for(uint8_t med_idx = 0; med_idx < med_f_len; med_idx++)
@@ -278,10 +278,11 @@ Vector3f UserFilter<T,FILTER_SIZE>::apply3d(Vector3f sample)
     if(!_first)
     {
         // update state
-        filter_state_3d[_sample_idx++].x = sample.x;
-        filter_state_3d[_sample_idx++].y = sample.y;
-        filter_state_3d[_sample_idx++].z = sample.z;
+        filter_state_3d[_sample_idx].x = sample.x;
+        filter_state_3d[_sample_idx].y = sample.y;
+        filter_state_3d[_sample_idx].z = sample.z;
         // wrap index if necessary
+        _sample_idx++; 
         if( _sample_idx >= FILTER_SIZE )
             _sample_idx = 0;
 

@@ -73,7 +73,7 @@ public:
         reset();
         freq_t fr_t = (freq_t) (cutoff/(uint16_t)5 - 1);
         // check cutoff freq is valid
-        if((0 != cutoff%5) || (cutoff < 5) || (cutoff > 200))
+        if((0 != cutoff%5) || (cutoff < 5) || (cutoff >= 200))
         {
             // hal.util->prt("[Warn] UserFilter: invalid cutoff freq!");
             if(cutoff < 5)
